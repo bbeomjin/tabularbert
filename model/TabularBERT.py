@@ -425,6 +425,7 @@ class TabularBERTTrainer(nn.Module):
             random_token_prob (float): Probability of replacing tokens with random values. Default: 0.1
             unchanged_token_prob (float): Probability of keeping original tokens unchanged. Default: 0.1
             ignore_index (int): Index to ignore in loss calculation. Default: -100
+            num_workers (int): Number of subprocesses to use for data loading. Default: 0
         """
         # Update training configuration
         self.config['training'] = {
