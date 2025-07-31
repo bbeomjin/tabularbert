@@ -12,22 +12,19 @@ class DiscretizeBase:
     """
     
     def __init__(self, 
-                 K: int = 10,
-                 L: int = 10,
+                 num_bins: int = 10,
                  encoding_info: Dict[str, Dict[str, int]] = None
                  ) -> None:
        
        # Default number of bins and subbins 
-       self.K = K
-       self.L = L
+       self.num_bins = num_bins
        
        # Specific binning information
        self.encoding_info = encoding_info
        
     def _fit(self,
              x: ArrayLike,
-             K: int,
-             L: int
+             num_bins: int,
              ) -> List[float]:
         raise NotImplementedError()
     
@@ -42,7 +39,7 @@ class DiscretizeBase:
             self.columns = [j for j in range(x.shape[1])]
         
         # Set the default number of bins and subbins
-        encoding_info = {k: {'K': self.K, 'L': self.L} for k in self.columns}
+        encoding_info = {k: self.num_bins for k in self.columns}
         
         if self.encoding_info is not None:
             vars = list(self.encoding_info.keys())
@@ -52,29 +49,24 @@ class DiscretizeBase:
                 )
             for v in vars:
                 encoding_info[v] = self.encoding_info[v]
+                
+        self.encoding_info = encoding_info
         
         # Getting cut-off values for binning
         bins = {}
         for j, k in enumerate(encoding_info.keys()):
-            bins[k] = self._fit(x[:, j], K = encoding_info[k]['K'], L = encoding_info[k]['L'])
-        self.encoding_info = encoding_info
+            bins[k] = self._fit(x[:, j], num_bins = encoding_info[k])
+        
         self.bins = bins
         
     def _discretize(self, 
                     x: ArrayLike,
-                    bins: List[float]|ArrayLike,
-                    K: int,
-                    L: int,
+                    bins: List[float] | ArrayLike,
                     ) -> Tuple[ArrayLike, ArrayLike]:
 
         ids = np.digitize(x, bins = bins, right = False)
-        bin_ids = np.floor(ids / L) 
-        subbin_ids = ids - L * bin_ids
-        if bin_ids.max() >= K:
-            raise ValueError(
-                    "Invalid bin cut-offs: The maximum cut-off value in bins must exceed the maximum value in x."
-                )
-        return bin_ids.astype(int) + 1, subbin_ids.astype(int) + 1
+        # Bin index starts with 1
+        return ids.astype(int) + 1
        
     def discretize(self, 
                    x: ArrayLike):
@@ -88,108 +80,176 @@ class DiscretizeBase:
                 "The number of columns in the data to be discretized does not match the number of columns in the fitted data."
             )
         
-        bin_ids_list = list(); subbin_ids_list = list()
+        bin_ids_list = list()
         for j, k in enumerate(self.encoding_info.keys()):
-            bin_ids, subbin_ids = self._discretize(x = x[:, j], 
-                                                   bins = self.bins[k], 
-                                                   K = self.encoding_info[k]['K'],
-                                                   L = self.encoding_info[k]['L'])
+            bin_ids = self._discretize(x = x[:, j], 
+                                       bins = self.bins[k])
             bin_ids_list.append(bin_ids)
-            subbin_ids_list.append(subbin_ids)
 
-        # Bin index starts with 1
-        return {'bin_ids': np.stack(bin_ids_list, axis = 1),
-                'subbin_ids': np.stack(subbin_ids_list, axis = 1)}
+        return np.stack(bin_ids_list, axis = 1)
 
 
 
 class QuantileDiscretize(DiscretizeBase):
     def __init__(self, 
-                 K: int = 10,
-                 L: int = 10,
+                 num_bins: int = 10,
                  encoding_info: Dict[str, Dict[str, int]] = None
                  ) -> None:
         
         super(QuantileDiscretize, self).__init__(
-            K = K,
-            L = L,
+            num_bins = num_bins,
             encoding_info = encoding_info
         )
         
     def _fit(self, 
              x: ArrayLike,
-             K: int,
-             L: int,
+             num_bins: int,
              ) -> ArrayLike:
-        bins = np.quantile(x, np.linspace(0, 1, K * L + 1))
+        bins = np.quantile(x, np.linspace(0, 1, num_bins + 1))
         bins[-1] = np.Inf
         return bins[1:]
+
     
     
-class GMTMLMData(Dataset):
+class SSLDataset(Dataset):
+    """
+    Dataset class for TabularBERT masked language modeling pretraining.
+    
+    This dataset handles the masking strategy for self-supervised learning on
+    tabular data that has been discretized into bins. It applies three types of
+    token transformations: masking, random replacement, and keeping unchanged.
+    
+    Args:
+        x (ArrayLike): Original tabular data
+        bin_ids (ArrayLike): Discretized tabular data as bin indices
+        encoding_info (Dict[str, int]): Mapping of feature names to number of bins
+        mask_token_id (int): Token ID used for masking. Default: 0
+        mask_token_prob (float): Probability of masking tokens. Default: 0.15
+        random_token_prob (float): Probability of random token replacement. Default: 0.1
+        unchanged_token_prob (float): Probability of keeping tokens unchanged. Default: 0.1
+        ignore_index (int): Index to ignore in loss calculation. Default: -100
+    
+    Returns:
+        Tuple[torch.Tensor, torch.Tensor]: (masked_tokens, labels)
+            - masked_tokens: Input tokens with masking applied
+            - labels: Original tokens for loss calculation
+    """
+    
     def __init__(self,
+                 x: ArrayLike,
                  bin_ids: ArrayLike,
-                 subbin_ids: ArrayLike,
                  encoding_info: Dict[str, int],
-                 mask_token_id: int = 0,
-                 mask_token_prob: float = 0.2,
-                 ignore_index: int = -100,
-                 random_token_prob: float = 0.1,
-                 unchange_token_prob: float = 0.1,
-                 device: torch.device = torch.device('cpu')
-                 ):
+                 mask_token_id: int=0,
+                 mask_token_prob: float=0.15,
+                 random_token_prob: float=0.1,
+                 unchanged_token_prob: float=0.1,
+                 ignore_index: int=-100
+                 ) -> None:
         
-        super(GMTMLMData, self).__init__()
+        super(SSLDataset, self).__init__()
+        
+        # Convert pandas DataFrame to numpy if needed
+        if isinstance(x, pd.DataFrame):
+            x = x.values
         
         if isinstance(bin_ids, pd.DataFrame):
             bin_ids = bin_ids.values
             
-        if isinstance(subbin_ids, pd.DataFrame):
-            subbin_ids = subbin_ids.values
-            
+        # Store data and parameters
+        self.x = x
         self.bin_ids = bin_ids
-        self.subbin_ids = subbin_ids
         self.encoding_info = encoding_info
         self.mask_token_id = mask_token_id
         self.mask_token_prob = mask_token_prob
-        self.ignore_index = ignore_index
         self.random_token_prob = random_token_prob
-        self.unchange_token_prob = unchange_token_prob
-        self.device = device
-        self.L = torch.tensor([self.encoding_info[k]['L'] for k in self.encoding_info.keys()])
-        self.K = torch.tensor([self.encoding_info[k]['K'] for k in self.encoding_info.keys()])
+        self.unchanged_token_prob = unchanged_token_prob
+        self.ignore_index = ignore_index
         
+        # Create the number of bins tensor for each feature
+        self.num_bins = torch.tensor([
+            self.encoding_info[k] for k in self.encoding_info.keys()
+        ])
+        
+    def _apply_masking(self, tokens: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Apply masking strategy to input tokens.
+        
+        Args:
+            tokens (torch.Tensor): Original token sequence
             
-    def random_word(self, bin_ids, probs, max_idx):
-        mask_ids = probs < self.mask_token_prob
-        labels = bin_ids.clone()
-        random_ids = probs < (self.mask_token_prob * self.random_token_prob)
-        unchange_ids = probs > (self.mask_token_prob - self.mask_token_prob * self.unchange_token_prob)
-        unchange_ids = unchange_ids * mask_ids
-        mask_ids = ~(random_ids | unchange_ids) * mask_ids
-        bin_ids[random_ids] = (torch.rand(len(bin_ids)) * max_idx).floor().long()[random_ids] + 1
-        bin_ids.masked_fill_(mask_ids, self.mask_token_id)
-        return bin_ids, labels
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor]: (masked_tokens, labels)
+        """
+        # Clone tokens for labels and masking
+        labels = tokens.clone()
+        masked_tokens = tokens.clone()
         
+        # Generate random probabilities for each token
+        probs = torch.rand(tokens.shape)
         
-    def __getitem__(self, idx):
-        bin_ids = self.bin_ids[idx]
-        subbin_ids = self.subbin_ids[idx]
+        # Determine which tokens to process (mask_token_prob of all tokens)
+        mask_candidates = probs < self.mask_token_prob
         
-        bin_ids = torch.tensor(bin_ids)
-        subbin_ids = torch.tensor(subbin_ids)
+        # Within mask candidates, determine the specific action:
+        # - random_token_prob: replace with random token
+        # - unchanged_token_prob: keep original token
+        # - remaining: replace with [MASK] token
         
-        probs1 = torch.rand(len(bin_ids))
-        probs2 = torch.rand(len(subbin_ids))
-        bin_ids, bin_labels = self.random_word(bin_ids, probs1, self.K)
-        subbin_ids, subbin_labels = self.random_word(subbin_ids, probs2, self.L)
+        random_mask = probs < self.mask_token_prob * self.random_token_prob
+        unchanged_mask = (probs > (self.mask_token_prob - self.mask_token_prob * self.unchanged_token_prob)) & mask_candidates
+        mask_token_mask = mask_candidates & ~(random_mask | unchanged_mask)
         
-        labels = self.L * (bin_labels - 1) + subbin_labels - 1
-        labels[~((probs1 < self.mask_token_prob) | (probs2 < self.mask_token_prob))] = self.ignore_index
+        # Apply random token replacement
+        masked_tokens[random_mask] = (torch.rand(len(tokens)) * self.num_bins + 1).type(masked_tokens.dtype)[random_mask]
         
-        return bin_ids.to(self.device), subbin_ids.to(self.device), labels.to(self.device)
+        # Apply mask token
+        masked_tokens[mask_token_mask] = self.mask_token_id
+        
+        # Set labels for non-masked tokens to ignore_index
+        labels[~mask_candidates] = self.ignore_index
+        
+        return masked_tokens, labels
+        
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Get a single sample with masking applied.
+        
+        Args:
+            idx (int): Sample index
+            
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor]: (masked_tokens, labels)
+        """
+        # Get tokens for this sample
+        tabular_x = torch.tensor(self.x[idx], dtype=torch.float)
+        tokens = torch.tensor(self.bin_ids[idx], dtype=torch.long)
+        
+        # Apply masking strategy
+        masked_tokens, labels = self._apply_masking(tokens)
+        tabular_x[labels == self.ignore_index] = torch.nan
+        
+        return masked_tokens, labels, tabular_x
     
-    def __len__(self):
+    def __len__(self) -> int:
+        """
+        Get the total number of samples in the dataset.
+        
+        Returns:
+            int: Number of samples
+        """
         return len(self.bin_ids)
 
 
+if __name__ == '__main__':
+    x = np.random.rand(20, 10)
+    discretizer = QuantileDiscretize(num_bins = 100, encoding_info = {0: 10})
+    discretizer.fit(x)
+    bin_ids = discretizer.discretize(x)
+    dataset = SSLDataset(x = x,
+                     bin_ids = bin_ids,
+                     encoding_info = discretizer.encoding_info,
+                     mask_token_prob = 0.30,
+                     random_token_prob = 0.1,
+                     unchanged_token_prob = 0.1,
+                     ignore_index = -100)
+    print(dataset[0])
