@@ -1,238 +1,178 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-from .transformer import TransformerBlock
+from typing import Dict, List
 from .embedding import NumEmbedding
 
 
-# class BERT(nn.Module):
-#     """
-#     BERT model : Bidirectional Encoder Representations from Transformers.
-#     """
-
-#     def __init__(self, 
-#                  embedding,
-#                  n_layers: int = 12, 
-#                  n_heads: int = 12,
-#                  dropout: float = 0.1):
-#         """
-#         :param vocab_size: vocab_size of total words
-#         :param hidden: BERT model hidden size
-#         :param n_layers: numbers of Transformer blocks(layers)
-#         :param attn_heads: number of attention heads
-#         :param dropout: dropout rate
-#         """
-
-#         super(BERT, self).__init__()
-#         self.d_model = embedding.embedding_dim
-#         self.n_layers = n_layers
-#         self.n_heads = n_heads
-
-#         # paper noted they used 4*hidden_size for ff_network_hidden_size
-#         # self.d_feed_forward = self.d_model * 4
-#         self.d_feed_forward = self.d_model * 1
-
-#         # embedding for BERT, sum of positional, segment, token embeddings
-#         self.embedding = embedding
-
-#         # multi-layers transformer blocks, deep network
-#         self.transformer_blocks = nn.ModuleList(
-#             [TransformerBlock(self.d_model, n_heads, self.d_feed_forward, dropout) for _ in range(n_layers)])
-    
-#     def forward(self, level_ids, sublevel_ids, attn_mask):
-#         # attention masking for padded token
-#         # torch.ByteTensor([batch_size, 1, seq_len, seq_len)
-#         mask = (attn_mask > 0).unsqueeze(1).repeat(1, attn_mask.size(1), 1).unsqueeze(1)
-
-#         # embedding the indexed sequence to sequence of vectors
-#         x = self.embedding(level_ids, sublevel_ids)
-
-#         # running over multiple transformer blocks
-#         for transformer in self.transformer_blocks:
-#             x = transformer.forward(x, mask)
-
-#         return x
-    
-
 class BERT(nn.Module):
     """
-    BERT model : Bidirectional Encoder Representations from Transformers.
+    BERT (Bidirectional Encoder Representations from Transformers) model implementation.
+    
+    This class implements a BERT-style transformer encoder that processes embedded sequences
+    and applies bidirectional attention to learn contextual representations.
+    
+    The model consists of multiple transformer encoder layers that can process sequences
+    with attention mechanisms to capture long-range dependencies.
+    
+    Args:
+        embedding_dim (int): Dimension of input embeddings. Default: 256
+        n_layers (int): Number of transformer encoder layers. Default: 12
+        n_heads (int): Number of attention heads in each layer. Default: 12
+        dropout (float): Dropout probability for regularization. Default: 0.1
     """
 
     def __init__(self, 
-                 embedding,
+                 embedding_dim: int = 256,
                  n_layers: int = 12, 
                  n_heads: int = 12,
-                 dropout: float = 0.1):
-        """
-        :param vocab_size: vocab_size of total words
-        :param hidden: BERT model hidden size
-        :param n_layers: numbers of Transformer blocks(layers)
-        :param attn_heads: number of attention heads
-        :param dropout: dropout rate
-        """
-
+                 dropout: float = 0.1) -> None:
         super(BERT, self).__init__()
-        self.embedding_dim = embedding.embedding_dim
+        
+        # Validate that embedding_dim is divisible by n_heads
+        if embedding_dim % n_heads != 0:
+            raise ValueError(f"embedding_dim ({embedding_dim}) must be divisible by n_heads ({n_heads})")
+        
+        self.embedding_dim = embedding_dim
         self.n_layers = n_layers
         self.n_heads = n_heads
+        self.dropout = dropout
 
-        # embedding for BERT, sum of positional, segment, token embeddings
-        self.embedding = embedding
-
-        # multi-layers transformer blocks, deep network
+        # Create transformer encoder layers
         transformer_layer = nn.TransformerEncoderLayer(
-            d_model = self.embedding_dim,
-            nhead = self.n_heads,
-            dropout = dropout,
-            batch_first = True
+            d_model=embedding_dim,
+            nhead=n_heads,
+            dropout=dropout,
+            batch_first=True,
+            norm_first=True  # Pre-layer normalization for better training stability
         )
+        
         self.transformer = nn.TransformerEncoder(
-            transformer_layer, n_layers
+            transformer_layer, 
+            num_layers=n_layers
         )
     
-    def forward(self, bin_ids, subbin_ids):
-        # attention masking for padded token
-        # torch.ByteTensor([batch_size, 1, seq_len, seq_len)
-        # mask = (attn_mask > 0).unsqueeze(1).repeat(1, attn_mask.size(1), 1).unsqueeze(1)
-
-        # embedding the indexed sequence to sequence of vectors
-        x = self.embedding(bin_ids, subbin_ids)
-
-        # running over multiple transformer blocks
-        x = self.transformer(x)
-
+    def forward(self, embeddings: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass through the BERT model.
+        
+        Args:
+            embeddings (torch.Tensor): Input embeddings of shape (batch_size, seq_len, embedding_dim)
+            
+        Returns:
+            torch.Tensor: Contextualized representations of shape (batch_size, seq_len, embedding_dim)
+        """
+        # Apply transformer layers with optional padding mask
+        x = self.transformer(embeddings)
         return x
 
 
-class GMTMaskedLanguageModel(nn.Module):
+
+class Classifier(nn.Module):
     """
-    """
-
-    def __init__(self, bert: BERT, encoded_info):
-        """
-        :param bert: BERT model which should be trained
-        :param vocab_size: total vocab size for masked_lm
-        """
-
-        super(GMTMaskedLanguageModel, self).__init__()
-        self.bert = bert
-        self.encoded_info = encoded_info
-        self.fc = nn.ModuleList()
-        for k in encoded_info.keys():
-            self.fc.append(nn.Linear(self.bert.embedding_dim, encoded_info[k]['K'] * encoded_info[k]['L']))
-        # self.fc = nn.Linear(self.bert.embedding_dim, encoded_info[0]['K'] * encoded_info[0]['L'])
-        
-    def forward(self, bin_ids, subbin_ids):
-        bert_out = self.bert(bin_ids, subbin_ids)
-        out = list()
-        for j in range(bert_out.size(1) - 1):
-            # out.append(self.fc[j](bert_out[:, j]))
-            out.append(self.fc[j](bert_out[:, j + 1]))
-            # out.append(self.fc(bert_out[:, j]))
-        return out
-
-
-# class GMTMaskedLanguageModel2(nn.Module):
-#     """
-#     """
-
-#     def __init__(self, bert: BERT, encoded_info):
-#         """
-#         :param bert: BERT model which should be trained
-#         :param vocab_size: total vocab size for masked_lm
-#         """
-
-#         super(GMTMaskedLanguageModel2, self).__init__()
-#         self.bert = bert
-#         self.encoded_info = encoded_info
-#         self.fc = nn.Linear(self.bert.embedding_dim, 100)
-        
-#     def forward(self, bin_ids, subbin_ids):
-#         bert_out = self.bert(bin_ids, subbin_ids)
-#         out = self.fc(bert_out)
-#         return out
-
-
-class HierarchyCassification(nn.Module):
-    """
-    """
-
-    def __init__(self, bert: BERT, vocab_size, n_levels = 100):
-        """
-        :param bert: BERT model which should be trained
-        :param vocab_size: total vocab size for masked_lm
-        """
-
-        super(HierarchyCassification, self).__init__()
-        self.bert = bert
-        self.level_lm = MaskedLanguageModel(self.bert.embedding_dim, vocab_size)
-        self.W = nn.Parameter(torch.randn(n_levels, self.bert.embedding_dim, vocab_size))
-        self.bias = nn.Parameter(torch.zeros(n_levels, vocab_size))
-        
-    def forward(self, level_ids, sublevel_ids):
-        attn_mask = torch.ones((level_ids.size(0), level_ids.size(1)), dtype = level_ids.dtype, device = sublevel_ids.device)
-        x = self.bert(level_ids, sublevel_ids, attn_mask)
-        out = self.level_lm(x)
-        ix = torch.argmax(out, dim = -1)
-        sublevel_out = torch.matmul(x.unsqueeze(-1).transpose(-1, -2), self.W[ix]).squeeze(-2) + self.bias[ix]
-        return out, sublevel_out
-
-
+    Multi-task classification head for sequence-to-sequence prediction.
     
-class RegBERT(nn.Module):
-    """
-    BERT for Selfies
-    Next Sentence Prediction Model + Masked Language Model
-    """
-
-    def __init__(self, bert: BERT, vocab_size):
-        """
-        :param bert: BERT model which should be trained
-        :param vocab_size: total vocab size for masked_lm
-        """
-
-        super(RegBERT, self).__init__()
-        self.bert = bert
-        # self.next_sentence = NextSentencePrediction(self.bert.hidden)
-        self.lm = MaskedLanguageModel(self.bert.embedding_dim, vocab_size)
-
-    def forward(self, x, attn_mask, segment_label):
-        x = self.bert(x, attn_mask, segment_label)
-        return self.mask_lm(x)
-
-
-class NextSentencePrediction(nn.Module):
-    """
-    2-class classification model : is_next, is_not_next
+    This classifier applies different linear transformations to each position in the sequence
+    (excluding the CLS token) to predict class labels for multiple tasks simultaneously.
+    Each position can have a different number of output classes as specified in encoding_info.
+    
+    Args:
+        embedding_dim (int): Dimension of input embeddings from the BERT model
+        encoding_info (Dict[str, int]): Dictionary of binning information
+                                       e.g., {'var1': 10, 'var2': 5} for 10 and 5 classes respectively
     """
 
-    def __init__(self, hidden):
+    def __init__(self, 
+                 embedding_dim: int, 
+                 encoding_info: Dict[str, int]) -> None:
+        super(Classifier, self).__init__()
+        
+        self.embedding_dim = embedding_dim
+        self.encoding_info = encoding_info
+        
+        # Create linear layers for each task
+        self.fc = nn.ModuleList([
+            nn.Linear(embedding_dim, num_classes) 
+            for num_classes in encoding_info.values()
+        ])
+        
+    def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
         """
-        :param hidden: BERT model output size
+        Forward pass through the classifier.
+        
+        Args:
+            x (torch.Tensor): Input tensor of shape (batch_size, seq_len, embedding_dim)
+                             where seq_len includes the CLS token at position 0
+        
+        Returns:
+            List[torch.Tensor]: List of classification logits for each position (excluding CLS token)
+                               Each tensor has shape (batch_size, num_classes_for_variable_i)
         """
-        super().__init__()
-        self.linear = nn.Linear(hidden, 2)
-        self.softmax = nn.LogSoftmax(dim=-1)
+        
+        if x.shape[1] != len(self.encoding_info) + 1:
+            raise ValueError(f"Expected {len(self.encoding_info) + 1} sequence length (including CLS), got {x.shape[1]}")
+        
+        outputs = []
+        # Process each position (excluding CLS token at position 0)
+        for j in range(len(self.encoding_info)):
+            # Apply corresponding linear layer to position j+1 (skip CLS token)
+            logits = self.fc[j](x[:, j + 1])
+            outputs.append(logits)
+            
+        return outputs
 
-    def forward(self, x):
-        return self.softmax(self.linear(x[:, 0]))
 
 
-class MaskedLanguageModel(nn.Module):
+class Regressor(nn.Module):
     """
-    predicting origin token from masked input sequence
-    n-class classification problem, n-class = vocab_size
+    Multi-task regression head for sequence-to-value prediction.
+    
+    This regressor applies linear transformations to BERT embeddings from each sequence position
+    (excluding the CLS token) to predict continuous real values for multiple regression tasks.
+    Each position's embedding is independently mapped to a single scalar value.
+    
+    Args:
+        embedding_dim (int): Dimension of input embeddings from the BERT model
+        encoding_info (Dict[str, int]): Dictionary of binning information
+                                      The values are not used for regression (always output 1 value per task)
+                                      but kept for consistency with Classifier interface
     """
-
-    def __init__(self, hidden, vocab_size):
+    
+    def __init__(self,
+                 embedding_dim: int,
+                 encoding_info: Dict[str, int]) -> None:
+        super(Regressor, self).__init__()
+        
+        self.embedding_dim = embedding_dim
+        self.encoding_info = encoding_info
+        
+        # Create linear layers for each regression task (each outputs 1 value)
+        self.fc = nn.ModuleList([
+            nn.Linear(embedding_dim, 1) 
+            for _ in range(len(encoding_info))
+        ])
+    
+    def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
         """
-        :param hidden: output size of BERT model
-        :param vocab_size: total vocab size
+        Forward pass through the regressor.
+        
+        Args:
+            x (torch.Tensor): Input tensor of shape (batch_size, seq_len, embedding_dim)
+                             where seq_len includes the CLS token at position 0
+        
+        Returns:
+            List[torch.Tensor]: List of regression outputs for each position (excluding CLS token)
+                               Each tensor has shape (batch_size,) containing scalar predictions
         """
-        super().__init__()
-        self.linear = nn.Linear(hidden, vocab_size)
-
-    def forward(self, x):
-        return self.linear(x)
+        
+        if x.shape[1] != len(self.encoding_info) + 1:
+            raise ValueError(f"Expected {len(self.encoding_info) + 1} sequence length (including CLS), got {x.shape[1]}")
+        
+        outputs = []
+        # Process each position (excluding CLS token at position 0)
+        for j in range(len(self.encoding_info)):
+            # Apply corresponding linear layer to position j+1 (skip CLS token)
+            prediction = self.fc[j](x[:, j + 1]).flatten()
+            outputs.append(prediction)
+            
+        return outputs
