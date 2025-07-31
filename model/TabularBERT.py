@@ -2,6 +2,7 @@ import functools
 import json
 import os
 import warnings
+import pathlib
 from typing import Dict, Tuple, List
 
 import torch
@@ -411,6 +412,7 @@ class TabularBERTTrainer(nn.Module):
               random_token_prob: float=0.1,
               unchanged_token_prob: float=0.1,
               ignore_index: int=-100,
+              num_workers: int=0,
               ) -> None:
         """
         Run self-supervised pretraining using masked language modeling.
@@ -447,7 +449,8 @@ class TabularBERTTrainer(nn.Module):
             mask_token_prob=mask_token_prob,
             random_token_prob=random_token_prob,
             unchanged_token_prob=unchanged_token_prob,
-            ignore_index=ignore_index
+            ignore_index=ignore_index,
+            num_workers=num_workers
         )
         trainloader = DataLoader(train_dataset, 
                                  batch_size = batch_size,
@@ -462,7 +465,8 @@ class TabularBERTTrainer(nn.Module):
                 mask_token_prob=mask_token_prob,
                 random_token_prob=random_token_prob,
                 unchanged_token_prob=unchanged_token_prob,
-                ignore_index=ignore_index
+                ignore_index=ignore_index,
+                num_workers=num_workers
             )
 
             validloader = DataLoader(valid_dataset, 
