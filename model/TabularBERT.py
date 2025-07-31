@@ -450,13 +450,13 @@ class TabularBERTTrainer(nn.Module):
             mask_token_prob=mask_token_prob,
             random_token_prob=random_token_prob,
             unchanged_token_prob=unchanged_token_prob,
-            ignore_index=ignore_index,
-            num_workers=num_workers
+            ignore_index=ignore_index
         )
         trainloader = DataLoader(train_dataset, 
-                                 batch_size = batch_size,
-                                 shuffle = True, 
-                                 drop_last = True)
+                                 batch_size=batch_size,
+                                 shuffle=True, 
+                                 drop_last=True,
+                                 num_workers=num_workers)
 
         if self.valid_x is not None:
             valid_dataset = SSLDataset(
@@ -466,14 +466,14 @@ class TabularBERTTrainer(nn.Module):
                 mask_token_prob=mask_token_prob,
                 random_token_prob=random_token_prob,
                 unchanged_token_prob=unchanged_token_prob,
-                ignore_index=ignore_index,
-                num_workers=num_workers
+                ignore_index=ignore_index
             )
 
             validloader = DataLoader(valid_dataset, 
                                      batch_size=batch_size, 
                                      shuffle=True,
-                                     drop_last=False)
+                                     drop_last=False,
+                                     num_workers=num_workers)
             
         
         if self.model is None:
