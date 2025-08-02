@@ -240,6 +240,28 @@ class SSLDataset(Dataset):
         return len(self.bin_ids)
 
 
+
+class FinetuneDataset(Dataset):
+    def __init__(self, 
+                 bin_ids: ArrayLike,
+                 y: ArrayLike
+                 ) -> None:
+        super(FinetuneDataset, self).__init__()
+        
+        self.bin_ids = bin_ids
+        self.y = y
+        
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        bin_idx = torch.tensor(self.bin_ids[idx], dtype=torch.long)
+        dtype = torch.long if np.issubdtype(self.y[idx].dtype, np.integer) else torch.float
+        label = torch.tensor(self.y[idx], dtype=dtype)
+        return bin_idx, label
+    
+    def __len__(self) -> int:
+        return len(self.bin_ids)
+
+
+
 if __name__ == '__main__':
     x = np.random.rand(20, 10)
     discretizer = QuantileDiscretize(num_bins = 100, encoding_info = {0: 10})
