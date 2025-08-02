@@ -1,6 +1,5 @@
 import torch.nn as nn
 import torch
-import math
 
 class NumEmbedding(nn.Module):
     """

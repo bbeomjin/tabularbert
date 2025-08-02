@@ -9,29 +9,86 @@ except ImportError:
     warnings.warn("WandB not available. Install with: pip install wandb")
 
 class CheckPoint:
-    def __init__(self, save_path: str, max: bool):
-        
+    def __init__(self, save_path: str, phase: str, max: bool):
+        self.phase = phase
         self.max = max
         self.loss = None
+        
         save_path = os.path.expanduser(save_path)
-        if os.path.exists(save_path) is not True:
-            os.mkdir(save_path)
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
         
         self.save_path = os.path.join(save_path, 'model_checkpoint.pt')
-        
-    def __call__(self, x, model, epoch):
-        if self.loss is None:
-            self.loss = x
-            torch.save(model, self.save_path.format(epoch = epoch))
+    
+    def _create_pretraining_checkpoint(self, model, config):
+        """Create checkpoint for pretraining phase."""
+        return {
+            'data_config': {
+                'num_bins': config['data']['num_bins'],
+                'encoding_info': config['data']['encoding_info']
+            },
+            'model_state_dict': model.state_dict(),
+            'model_config': {
+                'encoding_info': model.encoding_info,
+                'embedding_dim': model.embedding_dim,
+                'n_layers': model.n_layers,
+                'n_heads': model.n_heads,
+                'dropout': model.dropout,
+                'max_len': model.max_len,
+                'max_position': model.max_position
+            },
+            'regularization_lambda': config['pretraining']['regularization_lambda']
+        }
+    
+    def _create_finetuning_checkpoint(self, model, config):
+        """Create checkpoint for fine-tuning phase."""
+        return {
+            'model_state_dict': model.state_dict(),
+            'model_config': {
+                'tabular_bert': {
+                    'encoding_info': model.pretrained_model.encoding_info,
+                    'embedding_dim': model.pretrained_model.embedding_dim,
+                    'n_layers': model.pretrained_model.n_layers,
+                    'n_heads': model.pretrained_model.n_heads,
+                    'dropout': model.pretrained_model.dropout,
+                    'max_len': model.pretrained_model.max_len,
+                    'max_position': model.pretrained_model.max_position
+                },
+                'mlp': {
+                    'input_dim': model.mlp.input_dim,
+                    'output_dim': model.mlp.output_dim,
+                    'hidden_layers': model.mlp.hidden_layers,
+                    'activation': model.mlp.activation.__name__,
+                    'dropouts': model.mlp.dropouts,
+                    'batch_norm': model.mlp.batch_norm
+                }
+            }
+        }
+    
+    def _save_checkpoint(self, model, config):
+        """Save checkpoint based on phase."""
+        if self.phase == 'pretraining':
+            checkpoint = self._create_pretraining_checkpoint(model, config)
         else:
-            if self.max:
-                if x > self.loss:
-                    self.loss = x
-                    torch.save(model, self.save_path.format(epoch = epoch))
-            else:
-                if x < self.loss:
-                    self.loss = x
-                    torch.save(model, self.save_path.format(epoch = epoch))
+            checkpoint = self._create_finetuning_checkpoint(model, config)
+        
+        torch.save(checkpoint, self.save_path)
+    
+    def __call__(self, x, model, config):
+        should_save = False
+        
+        if self.loss is None:
+            # First time - always save
+            self.loss = x
+            should_save = True
+        else:
+            # Check if we should update based on max/min criteria
+            if (self.max and x > self.loss) or (not self.max and x < self.loss):
+                self.loss = x
+                should_save = True
+        
+        if should_save:
+            self._save_checkpoint(model, config)
 
 
 

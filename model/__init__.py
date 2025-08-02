@@ -1,2 +1,3 @@
-from .TabularBERT import TabularBERT, TabularBERTTrainer
-__all__ = ['TabularBERT', 'TabularBERTTrainer']
+from .tabular_bert import TabularBERT, TabularBERTTrainer
+from .mlp import MLP
+__all__ = ['TabularBERT', 'TabularBERTTrainer', 'MLP']

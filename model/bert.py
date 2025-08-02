@@ -1,8 +1,6 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from typing import Dict, List
-from .embedding import NumEmbedding
 
 
 class BERT(nn.Module):
@@ -109,14 +107,14 @@ class Classifier(nn.Module):
                                Each tensor has shape (batch_size, num_classes_for_variable_i)
         """
         
-        if x.shape[1] != len(self.encoding_info) + 1:
-            raise ValueError(f"Expected {len(self.encoding_info) + 1} sequence length (including CLS), got {x.shape[1]}")
+        if x.shape[1] != len(self.encoding_info):
+            raise ValueError(f"Expected {len(self.encoding_info)} sequence length, got {x.shape[1]}")
         
         outputs = []
         # Process each position (excluding CLS token at position 0)
         for j in range(len(self.encoding_info)):
-            # Apply corresponding linear layer to position j+1 (skip CLS token)
-            logits = self.fc[j](x[:, j + 1])
+            # Apply corresponding linear layer to position j
+            logits = self.fc[j](x[:, j])
             outputs.append(logits)
             
         return outputs
@@ -165,14 +163,14 @@ class Regressor(nn.Module):
                                Each tensor has shape (batch_size,) containing scalar predictions
         """
         
-        if x.shape[1] != len(self.encoding_info) + 1:
-            raise ValueError(f"Expected {len(self.encoding_info) + 1} sequence length (including CLS), got {x.shape[1]}")
+        if x.shape[1] != len(self.encoding_info):
+            raise ValueError(f"Expected {len(self.encoding_info)} sequence length, got {x.shape[1]}")
         
         outputs = []
         # Process each position (excluding CLS token at position 0)
         for j in range(len(self.encoding_info)):
-            # Apply corresponding linear layer to position j+1 (skip CLS token)
-            prediction = self.fc[j](x[:, j + 1]).flatten()
+            # Apply corresponding linear layer to position j
+            prediction = self.fc[j](x[:, j]).flatten()
             outputs.append(prediction)
             
         return outputs
