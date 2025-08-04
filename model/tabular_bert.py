@@ -145,16 +145,17 @@ class TabularBERT(nn.Module):
     
 
 class DownstreamModel(nn.Module):
-    def __init__(self, pretrained_model: TabularBERT, mlp: MLP):
+    def __init__(self, pretrained_model: TabularBERT, head: MLP):
         super(DownstreamModel, self).__init__()
+        self.encoding_info = pretrained_model.encoding_info
         self.embedding = pretrained_model.embedding
         self.bert = pretrained_model.bert
-        self.mlp = mlp
+        self.head = head
     
     def forward(self, bin_ids: torch.Tensor) -> torch.Tensor:
         embeddings = self.embedding(bin_ids)
         contextualized_embeddings = self.bert(embeddings)
-        outputs = self.mlp(contextualized_embeddings[:, 0])
+        outputs = self.head(contextualized_embeddings[:, 0])
         return outputs
 
 
@@ -222,9 +223,9 @@ class TabularBERTTrainer(nn.Module):
         y: ArrayLike=None,
         num_bins: int=50,
         encoding_info: Dict[str, int]=None,
-        device: torch.device=torch.device('cpu'),
         valid_x: ArrayLike=None,
-        valid_y: ArrayLike=None
+        valid_y: ArrayLike=None,
+        device: torch.device=torch.device('cpu')
     ) -> None:
         super(TabularBERTTrainer, self).__init__()
         
@@ -261,7 +262,7 @@ class TabularBERTTrainer(nn.Module):
         
         # Initialize model components (will be set later)
         self.model = None
-        self.mlp = None
+        self.head = None
         self.optimizer = None
         self.save = False
     
@@ -289,6 +290,7 @@ class TabularBERTTrainer(nn.Module):
         
         # Initialize configuration dictionary for comprehensive tracking
         self.config = {
+            'project': project_name,
             # Data configuration
             'data': {
                 'num_bins': self.num_bins,
@@ -301,12 +303,11 @@ class TabularBERTTrainer(nn.Module):
             'system': {
                 'device': str(self.device)
             },
-            # Model configuration (will be updated in set_bert/set_mlp)
-            'model': {},
-            # Optimizer configuration (will be updated in set_optimizer)
-            'optimizer': {},
-            # Training configuration (will be updated in pretrain)
-            'training': {}
+            # Pretraining/Finetuning configuration
+            phase: {'model': {},
+                    'optimizer': {},
+                    'training': {}
+                    }
         }
         
         # Save initial configuration as JSON
@@ -322,6 +323,7 @@ class TabularBERTTrainer(nn.Module):
             use_wandb=use_wandb
         )
         self.save = True
+        self.phase = phase
     
     def _save_config(self) -> None:
         """
@@ -378,16 +380,17 @@ class TabularBERTTrainer(nn.Module):
         max_position = len(self.discretizer.encoding_info)
         
         # Update model configuration
-        self.config['pretrained_model'] = {
-            'architecture': 'TabularBERT',
-            'embedding_dim': embedding_dim,
-            'n_layers': n_layers,
-            'n_heads': n_heads,
-            'dropout': dropout,
-            'max_len': max_len,
-            'max_position': max_position,
-            'total_parameters': None  # Will be updated after model creation
-        }
+        if self.save:
+            self.config['pretraining']['model'] = {
+                'architecture': 'TabularBERT',
+                'embedding_dim': embedding_dim,
+                'n_layers': n_layers,
+                'n_heads': n_heads,
+                'dropout': dropout,
+                'max_len': max_len,
+                'max_position': max_position,
+                'total_parameters': None  # Will be updated after model creation
+            }
         
         # Create model
         self.model = TabularBERT(
@@ -401,44 +404,45 @@ class TabularBERTTrainer(nn.Module):
         ).to(self.device)
         
         # Update total parameters count
-        total_params = sum(p.numel() for p in self.model.parameters())
-        trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
-        self.config['pretrained_model']['total_parameters'] = total_params
-        self.config['pretrained_model']['trainable_parameters'] = trainable_params
-        
-        # Save updated configuration
         if self.save:
+            total_params = sum(p.numel() for p in self.model.parameters())
+            trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+            self.config['pretraining']['model']['total_parameters'] = total_params
+            self.config['pretraining']['model']['trainable_parameters'] = trainable_params
+        
+            # Save updated configuration
             self._save_config()
     
-    def set_mlp(self,
-                output_dim: int=1,
-                hidden_layers: List[int]=None,
-                activation: nn.Module=nn.ReLU,
-                dropouts: float | List[float]=0.1,
-                batch_norm: bool=False
-                ) -> None:
+    def set_head(self,
+                 output_dim: int=1,
+                 hidden_layers: List[int]=None,
+                 activation: nn.Module=nn.ReLU,
+                 dropouts: float | List[float]=0.0,
+                 batch_norm: bool=False
+                 ) -> None:
         """
-        Configure the MLP for fine-tuning.
+        Configure the head for fine-tuning.
         
         Args:
-            output_dim (int): Output dimension for the MLP. Default: 1
-            hidden_layers (List[int]): Hidden dimensions for the MLP. Default: [Embedding Dimension]
-            activation (nn.Module): Activation function for the MLP. Default: ReLU
-            dropouts (float | List[float]): Dropout probabilities for the MLP. Default: 0.1
+            output_dim (int): Output dimension for the head. Default: 1
+            hidden_layers (List[int]): Hidden dimensions for the head. Default: [Embedding Dimension]
+            activation (nn.Module): Activation function for the head. Default: ReLU
+            dropouts (float | List[float]): Dropout probabilities for the head. Default: 0.0
             batch_norm (bool): Whether to use batch normalization. Default: False
         """
         
         # Update model configuration
         hidden_layers = [self.model.embedding_dim] if hidden_layers is None else hidden_layers
-        self.config['model']['mlp'] = {
-            'output_dim': output_dim,
-            'hidden_layers': hidden_layers,
-            'activation': activation,
-            'dropouts': dropouts,
-            'batch_norm': batch_norm
-        }
+        if self.save:
+            self.config['fine-tuning']['model']['head'] = {
+                'output_dim': output_dim,
+                'hidden_layers': hidden_layers,
+                'activation': activation,
+                'dropouts': dropouts,
+                'batch_norm': batch_norm
+            }
         
-        self.mlp = MLP(input_dim=self.model.embedding_dim,
+        self.head = MLP(input_dim=self.model.embedding_dim,
                        output_dim=output_dim,
                        hidden_layers=hidden_layers,
                        activation=activation,
@@ -452,7 +456,7 @@ class TabularBERTTrainer(nn.Module):
         
     def set_optimizer(self,
                       lr: float=1e-4,
-                      weight_decay: float=0.001,
+                      weight_decay: float=1e-5,
                       betas: Tuple[float, float]=(0.9, 0.999)
                       ) -> None:
         """
@@ -464,12 +468,13 @@ class TabularBERTTrainer(nn.Module):
             betas (Tuple[float, float]): Adam beta parameters. Default: (0.9, 0.999)
         """
         # Update optimizer configuration
-        self.config['optimizer'] = {
-            'type': 'AdamW',
-            'lr': lr,
-            'weight_decay': weight_decay,
-            'betas': betas
-        }
+        if self.save:
+            self.config[self.phase]['optimizer'] = {
+                'type': 'AdamW',
+                'lr': lr,
+                'weight_decay': weight_decay,
+                'betas': betas
+            }
         
         # Create optimizer partial function
         self.optimizer = functools.partial(
@@ -507,21 +512,20 @@ class TabularBERTTrainer(nn.Module):
             num_workers (int): Number of subprocesses to use for data loading. Default: 0
         """
         # Update training configuration
-        self.config['pretraining'] = {
-            'epochs': epochs,
-            'batch_size': batch_size,
-            'regularization_lambda': lamb,
-            'masking': {
-                'mask_token_prob': mask_token_prob,
-                'random_token_prob': random_token_prob,
-                'unchanged_token_prob': unchanged_token_prob
-            },
-            'ignore_index': ignore_index,
-            'num_workers': num_workers
-        }
-        
-        # Save updated configuration before training starts
         if self.save:
+            self.config['pretraining']['training'] = {
+                'epochs': epochs,
+                'batch_size': batch_size,
+                'regularization_lambda': lamb,
+                'masking': {
+                    'mask_token_prob': mask_token_prob,
+                    'random_token_prob': random_token_prob,
+                    'unchanged_token_prob': unchanged_token_prob
+                },
+                'ignore_index': ignore_index,
+                'num_workers': num_workers
+            }
+            # Save updated configuration before training starts
             self._save_config()
         
         train_dataset = SSLDataset(
@@ -556,7 +560,6 @@ class TabularBERTTrainer(nn.Module):
                                      drop_last=False,
                                      num_workers=num_workers)
             
-        
         if self.model is None:
             warnings.warn(
                 """
@@ -749,7 +752,7 @@ class TabularBERTTrainer(nn.Module):
             'total_loss': total_loss
         }
     
-    def _log_epoch_progress(self, train_loss, valid_loss=None, metric=None):
+    def _log_epoch_progress(self, train_loss, valid_loss=None, train_metric=None, valid_metric=None):
         """
         Log epoch loss information (progress bar handled by tqdm).
         """
@@ -758,12 +761,16 @@ class TabularBERTTrainer(nn.Module):
         else:
             loss_info = f"Train Loss: {train_loss:.6f}"
         
-        if metric is not None:
-            loss_info += f" | Metric: {metric:.6f}"
+        if train_metric is not None:
+            loss_info += f" | Train Metric: {train_metric:.6f}"
+        
+        if valid_metric is not None:
+            loss_info += f" | Valid Metric: {valid_metric:.6f}"
         
         print(f"  {loss_info}")    
-                    
-    def from_pretrained(self, save_path):
+    
+    @classmethod                
+    def from_pretrained(cls, save_path, device):
         """
         Load a pre-trained TabularBERT model from a checkpoint.
         
@@ -777,22 +784,28 @@ class TabularBERTTrainer(nn.Module):
             FileNotFoundError: If the checkpoint file doesn't exist
             ValueError: If the model configuration is incompatible
         """
-        import os
         
         if not os.path.exists(save_path):
             raise FileNotFoundError(f"Checkpoint file not found: {save_path}")
         
         # Load the pretrained model configuration
         config = torch.load(save_path)
-        self.num_bins = config['data_config']['num_bins']
-        self.encoding_info = config['data_config']['encoding_info']
-        self.lamb = config['regularization_lambda']
+        num_bins = config['data_config']['num_bins']
+        encoding_info = config['data_config']['encoding_info']
+        lamb = config['regularization_lambda']
         
-        self.model = TabularBERT(**config['model_config'])
-        self.model.load_state_dict(config['model_state_dict'])
-        self.model.to(self.device)
+        trainer = cls(num_bins = num_bins,
+                      encoding_info = encoding_info,
+                      device = device)
+        
+        trainer.lamb = lamb
+        trainer.model = TabularBERT(**config['model_config'])
+        trainer.model.load_state_dict(config['model_state_dict'])
+        trainer.model.to(device)
         
         print(f"Successfully loaded pretrained model from: {save_path}")
+        
+        return trainer
         
     def finetune(self, 
                  x: ArrayLike=None,
@@ -808,7 +821,8 @@ class TabularBERTTrainer(nn.Module):
                  lamb: float=None,
                  criterion: nn.Module=None,
                  metric: nn.Module=None,
-                 num_workers: int=0) -> None: 
+                 num_workers: int=0
+                 ) -> None: 
         """
         Fine-tune the TabularBERT model on a downstream task.
         
@@ -845,6 +859,14 @@ class TabularBERTTrainer(nn.Module):
         else:
             valid_bin_ids = discretizer.discretize(valid_x)
         
+        if self.save:
+            self.config['data']['num_bins'] = num_bins
+            self.config['data']['encoding_info'] = encoding_info
+            self.config['data']['data_shape'] = bin_ids.shape if hasattr(bin_ids, 'shape') else None
+            self.config['data']['has_validation'] = valid_bin_ids is not None
+            self.config['data']['validation_shape'] = valid_bin_ids.shape if valid_bin_ids is not None else None
+            self._save_config()
+        
         # Convert pandas objects to numpy arrays
         if isinstance(y, pd.Series) or isinstance(y, pd.DataFrame):
             target_y = y.values 
@@ -870,7 +892,7 @@ class TabularBERTTrainer(nn.Module):
                 "Criterion not specified. Automatically inferring criterion from the task type."
             )
             if task_type == 'classification':
-                criterion = nn.CrossEntropyLoss(ignore_index=self.config['pretraining']['ignore_index'])
+                criterion = nn.CrossEntropyLoss(ignore_index=self.config['pretraining']['training']['ignore_index'])
             elif task_type == 'regression':
                 criterion = nn.MSELoss()
         
@@ -878,18 +900,17 @@ class TabularBERTTrainer(nn.Module):
             lamb = self.lamb
             
         # Update training configuration
-        self.config['fine-tuning'] = {
-            'task_type': task_type,
-            'num_classes': num_classes,
-            'epochs': epochs,
-            'batch_size': batch_size,
-            'regularization_lambda': lamb,
-            'criterion': criterion,
-            'num_workers': num_workers
-        }
-        
-        # Save updated configuration before training starts
         if self.save:
+            self.config['fine-tuning']['training'] = {
+                'task_type': task_type,
+                'num_classes': num_classes,
+                'epochs': epochs,
+                'batch_size': batch_size,
+                'regularization_lambda': lamb,
+                'criterion': criterion,
+                'num_workers': num_workers
+            }
+            # Save updated configuration before training starts
             self._save_config()
         
         train_dataset = FinetuneDataset(bin_ids, target_y)
@@ -922,27 +943,27 @@ class TabularBERTTrainer(nn.Module):
                 "or load a pretrained model using the 'from_pretrained()' method."
             )
         
-        if self.mlp is None:
+        if self.head is None:
             output_dim = num_classes if task_type == 'classification' else target_y.shape[1]
             warnings.warn(
                 """
                 TabularBERT Model Auto-Configuration\n
                 ======================================================================\n
-                No MLP configuration detected. Initializing with optimized defaults:\n\n
+                No head configuration detected. Initializing with optimized defaults:\n\n
                 Architecture: MLP\n
                 Input Dimension: Embedding Dimension\n
                 Output Dimension: {output_dim}\n
                 Hidden Layers: 1\n
                 Hidden Layer Dimensions: Embedding Dimension\n
                 Activation Function: ReLU\n
-                Dropout Rate: 0.1\n
+                Dropout Rate: 0.0\n
                 Batch Normalization: False\n\n
-                Tip: Use trainer.set_mlp() to customize architecture before training.\n
+                Tip: Use trainer.set_head() to customize head before training.\n
                 ======================================================================
                 """.format(output_dim = output_dim),
                 UserWarning
             )
-            self.set_mlp(output_dim = output_dim)
+            self.set_head(output_dim = output_dim)
         
         # Define regularizer
         embed_penalty = L2EmbedPenalty(lamb)
@@ -953,7 +974,7 @@ class TabularBERTTrainer(nn.Module):
         
         # Define model
         self.model = DownstreamModel(pretrained_model=self.model,
-                                     mlp = self.mlp)
+                                     head = self.head)
         
         # Define optimizer
         if self.optimizer is None:
@@ -1010,7 +1031,8 @@ class TabularBERTTrainer(nn.Module):
                     checkpoint(current_loss, self.model, self.config)
                 
                 # Elegant progress reporting
-                self._log_epoch_progress(train_metrics['avg_loss'], valid_metrics['avg_loss'], valid_metrics['metric'])
+                self._log_epoch_progress(train_metrics['avg_loss'], valid_metrics['avg_loss'],
+                                         train_metrics['metric'], valid_metrics['metric'])
             else:
                 # No validation data - checkpoint on training loss
                 current_loss = train_metrics['avg_loss']
@@ -1018,10 +1040,13 @@ class TabularBERTTrainer(nn.Module):
                     checkpoint(current_loss, self.model, self.config)
                 
                 # Training-only progress reporting
-                self._log_epoch_progress(train_metrics['avg_loss'], metric=train_metrics['metric'])
+                self._log_epoch_progress(train_metrics['avg_loss'],
+                                         train_metrics['metric'])
         
         print(f"\n Fine-tuning completed!")
-        print(f"Model saved to: {self.save_dir}")
+        if self.save:
+            print(f"Model saved to: {self.save_dir}")
+        self.save = False
         
     def _run_finetuning_epoch(self, optimizer, scheduler, trainloader, criterion, metric, embed_penalty, global_step):
         """
@@ -1158,6 +1183,8 @@ class TabularBERTTrainer(nn.Module):
                 task = 'regression'
                 num_classes = None
                 reference = None
+                if y.ndim == 1:
+                    y = y.reshape(-1, 1)
             
             else:
                 raise ValueError(f"Unsupported label dtype: {y.dtype}. "

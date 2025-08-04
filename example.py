@@ -1,36 +1,57 @@
 import pandas as pd
 import torch
+import torch.nn as nn
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import QuantileTransformer, StandardScaler
 from model import TabularBERTTrainer
+from utils.metrics import Accuracy
 
+# Load and preprocess data
 data = pd.read_csv("./datasets/GE.csv")
 X = data.iloc[:, :-1].values
 y = data.iloc[:, -1].values
 y = pd.Categorical(y).codes.astype(int)
 
-train_X, valid_X, train_labels, valid_labels = train_test_split(X, y, test_size = 0.2, random_state = 0)
-
+train_X, test_X, train_labels, test_labels = train_test_split(X, y, train_size = 0.8, random_state = 0)
 scaler = QuantileTransformer(n_quantiles = 10000,
                              output_distribution = 'uniform',
                              subsample = None)
-# scaler = StandardScaler()
 scaler.fit(train_X)
 train_XX = scaler.transform(train_X)
-valid_XX = scaler.transform(valid_X)
 
-
-model = TabularBERTTrainer(x = train_XX, 
+# Pretraining
+trainer = TabularBERTTrainer(x = train_XX, 
                            num_bins = 50,
                            encoding_info = None, 
-                           device = torch.device('cuda:0'), 
-                           valid_x = valid_XX)
-model.setup_directories_and_logging(phase = 'pretraining', use_wandb = False)
-model.set_bert(embedding_dim = 1024,
+                           device = torch.device('cuda:0'))
+trainer.setup_directories_and_logging(phase = 'pretraining',
+                                      project_name = 'GE data pretraining',
+                                      use_wandb = False)
+trainer.set_bert(embedding_dim = 1024,
               n_layers = 3,
               n_heads = 8)
-model.pretrain(lamb = 0.5,
+trainer.pretrain(lamb = 0.5,
                mask_token_prob = 1,
                random_token_prob = 0.2,
                unchanged_token_prob = 0.79,
-               num_workers = 4)
+               num_workers = 0)
+
+# Finetuning
+train_X, valid_X, train_labels, valid_labels = train_test_split(train_X, train_labels, train_size = 0.8, random_state = 0)
+# If a pretrained model is available, load it
+# trainer = TabularBERTTrainer.from_pretrained(save_path = './pretraining/version0/model_checkpoint.pt',
+#                                              device = torch.device('cuda:0'))
+trainer.setup_directories_and_logging(phase = 'fine-tuning',
+                                      project_name = 'GE data fine-tuning',
+                                      use_wandb = False)
+trainer.finetune(x = train_X,
+                 y = train_labels,
+                 valid_x = valid_X,
+                 valid_y = valid_labels,
+                 epochs = 1000,
+                 batch_size = 256,
+                 criterion = nn.CrossEntropyLoss(),
+                 metric = Accuracy(ignore_index=-100),
+                 num_workers = 0)
+
+

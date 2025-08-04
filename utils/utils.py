@@ -37,7 +37,7 @@ class CheckPoint:
                 'max_len': model.max_len,
                 'max_position': model.max_position
             },
-            'regularization_lambda': config['pretraining']['regularization_lambda']
+            'regularization_lambda': config['pretraining']['training']['regularization_lambda']
         }
     
     def _create_finetuning_checkpoint(self, model, config):
@@ -46,21 +46,21 @@ class CheckPoint:
             'model_state_dict': model.state_dict(),
             'model_config': {
                 'tabular_bert': {
-                    'encoding_info': model.pretrained_model.encoding_info,
-                    'embedding_dim': model.pretrained_model.embedding_dim,
-                    'n_layers': model.pretrained_model.n_layers,
-                    'n_heads': model.pretrained_model.n_heads,
-                    'dropout': model.pretrained_model.dropout,
-                    'max_len': model.pretrained_model.max_len,
-                    'max_position': model.pretrained_model.max_position
+                    'encoding_info': model.encoding_info,
+                    'max_len': model.embedding.max_len,
+                    'max_position': model.embedding.max_position,
+                    'embedding_dim': model.embedding.embedding_dim,
+                    'n_layers': model.bert.n_layers,
+                    'n_heads': model.bert.n_heads,
+                    'dropout': model.bert.dropout,
                 },
                 'mlp': {
-                    'input_dim': model.mlp.input_dim,
-                    'output_dim': model.mlp.output_dim,
-                    'hidden_layers': model.mlp.hidden_layers,
-                    'activation': model.mlp.activation.__name__,
-                    'dropouts': model.mlp.dropouts,
-                    'batch_norm': model.mlp.batch_norm
+                    'input_dim': model.head.input_dim,
+                    'output_dim': model.head.output_dim,
+                    'hidden_layers': model.head.hidden_layers,
+                    'activation': model.head.activation.__name__,
+                    'dropouts': model.head.dropouts,
+                    'batch_norm': model.head.batch_norm
                 }
             }
         }
