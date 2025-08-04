@@ -31,6 +31,12 @@ class MLP(nn.Module):
         batch_norm: bool=False
     ):
         super(MLP, self).__init__()
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        self.hidden_layers = hidden_layers
+        self.activation = activation
+        self.dropouts = dropouts
+        self.batch_norm = batch_norm
         
         layers = []
         prev_dim = input_dim
