@@ -1,0 +1,18 @@
+include README.md
+include LICENSE
+include requirements.txt
+include pyproject.toml
+recursive-include gmt *.py
+recursive-include gmt *.md
+recursive-include gmt *.txt
+recursive-exclude gmt __pycache__
+recursive-exclude gmt *.pyc
+recursive-exclude gmt *.pyo
+recursive-exclude gmt .DS_Store
+exclude .git*
+exclude .gitignore
+exclude *.log
+exclude .pytest_cache
+exclude build
+exclude dist
+exclude *.egg-info

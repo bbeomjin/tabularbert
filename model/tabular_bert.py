@@ -15,12 +15,12 @@ import numpy as np
 from .embedding import NumEmbedding
 from .bert import BERT, Classifier, Regressor
 from .mlp import MLP
-from utils.type import ArrayLike
-from utils.utils import DualLogger, CheckPoint, make_save_dir
-from utils.data import QuantileDiscretize, SSLDataset, FinetuneDataset
-from utils.criterion import TabularMSE, TabularWasserstein
-from utils.regularizer import L2EmbedPenalty
-from utils.scheduler import WarmupCosineLR
+from ..utils.type import ArrayLike
+from ..utils.utils import DualLogger, CheckPoint, make_save_dir
+from ..utils.data import QuantileDiscretize, SSLDataset, FinetuneDataset
+from ..utils.criterion import TabularMSE, TabularWasserstein
+from ..utils.regularizer import L2EmbedPenalty
+from ..utils.scheduler import WarmupCosineLR
 
 
 class TabularBERT(nn.Module):
