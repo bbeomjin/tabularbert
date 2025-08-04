@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import QuantileTransformer, StandardScaler
-from model import TabularBERTTrainer
+from tabularbert import TabularBERTTrainer
 from utils.metrics import Accuracy
 
 # Load and preprocess data

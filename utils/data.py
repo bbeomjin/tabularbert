@@ -2,8 +2,8 @@ import pandas as pd
 import numpy as np
 import torch
 from typing import Dict, Tuple, List
-from utils.type import ArrayLike
 from torch.utils.data import Dataset
+from .type import ArrayLike
 
 
 class DiscretizeBase:

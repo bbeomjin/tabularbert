@@ -2,13 +2,13 @@ include README.md
 include LICENSE
 include requirements.txt
 include pyproject.toml
-recursive-include tabular_bert *.py
-recursive-include tabular_bert *.md
-recursive-include tabular_bert *.txt
-recursive-exclude tabular_bert __pycache__
-recursive-exclude tabular_bert *.pyc
-recursive-exclude tabular_bert *.pyo
-recursive-exclude tabular_bert .DS_Store
+recursive-include tabularbert *.py
+recursive-include tabularbert *.md
+recursive-include tabularbert *.txt
+recursive-exclude tabularbert __pycache__
+recursive-exclude tabularbert *.pyc
+recursive-exclude tabularbert *.pyo
+recursive-exclude tabularbert .DS_Store
 exclude .git*
 exclude .gitignore
 exclude *.log

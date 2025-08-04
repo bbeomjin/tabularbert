@@ -3,7 +3,7 @@ requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "tabular-bert"
+name = "tabularbert"
 version = "0.1.0"
 description = "A comprehensive framework for tabular data modeling using BERT-based transformers"
 readme = "README.md"
@@ -55,17 +55,17 @@ all = ["wandb>=0.12.0"]
 
 [project.urls]
 Homepage = "https://github.com/bbeomjin/TabularBERT"
-Documentation = "https://tabular-bert.readthedocs.io/"
+Documentation = "https://tabularbert.readthedocs.io/"
 Repository = "https://github.com/bbeomjin/TabularBERT"
 "Bug Tracker" = "https://github.com/bbeomjin/TabularBERT/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["tabular_bert*"]
+include = ["tabularbert*"]
 exclude = ["tests*"]
 
 [tool.setuptools.package-data]
-tabular_bert = ["*.md", "*.txt"]
+tabularbert = ["*.md", "*.txt"]
 
 [tool.black]
 line-length = 88
@@ -89,11 +89,11 @@ extend-exclude = '''
 profile = "black"
 multi_line_output = 3
 line_length = 88
-known_first_party = ["tabular_bert"]
+known_first_party = ["tabularbert"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "--cov=tabular_bert --cov-report=term-missing --cov-report=html"
+addopts = "--cov=tabularbert --cov-report=term-missing --cov-report=html"

@@ -19,7 +19,7 @@ def read_requirements():
     return []
 
 setup(
-    name="tabular-bert",
+    name="tabularbert",
     version="0.1.0",
     author="Beomjin Park",
     author_email="bbeomjin@gmail.com",
@@ -67,12 +67,12 @@ setup(
     },
     include_package_data=True,
     package_data={
-        "tabular_bert": ["*.md", "*.txt"],
+        "tabularbert": ["*.md", "*.txt"],
     },
     keywords="tabular-data, bert, transformer, machine-learning, deep-learning, self-supervised",
     project_urls={
         "Bug Reports": "https://github.com/bbeomjin/TabularBERT/issues",
         "Source": "https://github.com/bbeomjin/TabularBERT",
-        "Documentation": "https://tabular-bert.readthedocs.io/",
+        "Documentation": "https://tabularbert.readthedocs.io/",
     },
 )
