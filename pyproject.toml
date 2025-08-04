@@ -3,7 +3,7 @@ requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "gmt-tabular-bert"
+name = "tabular-bert"
 version = "0.1.0"
 description = "A comprehensive framework for tabular data modeling using BERT-based transformers"
 readme = "README.md"
@@ -54,21 +54,18 @@ dev = [
 all = ["wandb>=0.12.0"]
 
 [project.urls]
-Homepage = "https://github.com/your-username/GMT"
-Documentation = "https://gmt-docs.readthedocs.io/"
-Repository = "https://github.com/your-username/GMT"
-"Bug Tracker" = "https://github.com/your-username/GMT/issues"
-
-[project.scripts]
-gmt-train = "gmt.scripts.train:main"
+Homepage = "https://github.com/bbeomjin/TabularBERT"
+Documentation = "https://tabular-bert.readthedocs.io/"
+Repository = "https://github.com/bbeomjin/TabularBERT"
+"Bug Tracker" = "https://github.com/bbeomjin/TabularBERT/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["gmt*"]
+include = ["tabular_bert*"]
 exclude = ["tests*"]
 
 [tool.setuptools.package-data]
-gmt = ["*.md", "*.txt"]
+tabular_bert = ["*.md", "*.txt"]
 
 [tool.black]
 line-length = 88
@@ -92,11 +89,11 @@ extend-exclude = '''
 profile = "black"
 multi_line_output = 3
 line_length = 88
-known_first_party = ["gmt"]
+known_first_party = ["tabular_bert"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "--cov=gmt --cov-report=term-missing --cov-report=html"
+addopts = "--cov=tabular_bert --cov-report=term-missing --cov-report=html"

@@ -2,13 +2,13 @@ include README.md
 include LICENSE
 include requirements.txt
 include pyproject.toml
-recursive-include gmt *.py
-recursive-include gmt *.md
-recursive-include gmt *.txt
-recursive-exclude gmt __pycache__
-recursive-exclude gmt *.pyc
-recursive-exclude gmt *.pyo
-recursive-exclude gmt .DS_Store
+recursive-include tabular_bert *.py
+recursive-include tabular_bert *.md
+recursive-include tabular_bert *.txt
+recursive-exclude tabular_bert __pycache__
+recursive-exclude tabular_bert *.pyc
+recursive-exclude tabular_bert *.pyo
+recursive-exclude tabular_bert .DS_Store
 exclude .git*
 exclude .gitignore
 exclude *.log
