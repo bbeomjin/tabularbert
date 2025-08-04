@@ -1,5 +1,5 @@
 """
-Setup script for GMT (Generative Modeling for Tabular data) package.
+Setup script for TabularBERT package.
 """
 
 from setuptools import setup, find_packages
@@ -19,14 +19,14 @@ def read_requirements():
     return []
 
 setup(
-    name="gmt-tabular-bert",
+    name="tabular-bert",
     version="0.1.0",
     author="Beomjin Park",
     author_email="bbeomjin@gmail.com",
     description="A comprehensive framework for tabular data modeling using BERT-based transformers",
     long_description=read_readme(),
     long_description_content_type="text/markdown",
-    url="https://github.com/bbeomjin/GMT",
+    url="https://github.com/bbeomjin/TabularBERT",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 3 - Alpha",
@@ -65,19 +65,14 @@ setup(
         ],
         "all": ["wandb>=0.12.0"],
     },
-    entry_points={
-        "console_scripts": [
-            "gmt-train=gmt.scripts.train:main",
-        ],
-    },
     include_package_data=True,
     package_data={
-        "gmt": ["*.md", "*.txt"],
+        "tabular_bert": ["*.md", "*.txt"],
     },
     keywords="tabular-data, bert, transformer, machine-learning, deep-learning, self-supervised",
     project_urls={
-        "Bug Reports": "https://github.com/bbeomjin/GMT/issues",
-        "Source": "https://github.com/bbeomjin/GMT",
-        "Documentation": "https://gmt-docs.readthedocs.io/",
+        "Bug Reports": "https://github.com/bbeomjin/TabularBERT/issues",
+        "Source": "https://github.com/bbeomjin/TabularBERT",
+        "Documentation": "https://tabular-bert.readthedocs.io/",
     },
 )

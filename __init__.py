@@ -1,5 +1,5 @@
 """
-GMT (Generative Modeling for Tabular data) - TabularBERT Package
+TabularBERT Package
 
 A comprehensive framework for tabular data modeling using BERT-based transformers.
 Provides self-supervised pretraining and supervised fine-tuning capabilities.
