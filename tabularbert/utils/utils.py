@@ -92,11 +92,10 @@ class CheckPoint:
 
 
 
-def make_save_dir(dir, type):
-    folder_name = os.path.join(type, 'version')
+def make_save_dir(dir):
     v = 0
     while True:
-        path = os.path.join(dir, folder_name + str(v))
+        path = os.path.join(dir, 'version' + str(v))
         if os.path.exists(path) is not True:
             os.mkdir(path)
             break

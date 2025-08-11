@@ -4,7 +4,7 @@ import torch.nn as nn
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import QuantileTransformer, StandardScaler
 from tabularbert import TabularBERTTrainer
-from utils.metrics import Accuracy
+from tabularbert.utils.metrics import Accuracy
 
 # Load and preprocess data
 data = pd.read_csv("./datasets/GE.csv")
@@ -13,35 +13,65 @@ y = data.iloc[:, -1].values
 y = pd.Categorical(y).codes.astype(int)
 
 train_X, test_X, train_labels, test_labels = train_test_split(X, y, train_size = 0.8, random_state = 0)
-scaler = QuantileTransformer(n_quantiles = 10000,
-                             output_distribution = 'uniform',
-                             subsample = None)
-scaler.fit(train_X)
-train_XX = scaler.transform(train_X)
+# scaler = QuantileTransformer(n_quantiles = 10000,
+#                              output_distribution = 'uniform',
+#                              subsample = None)
+# scaler.fit(train_X)
+# train_XX = scaler.transform(train_X)
 
-# Pretraining
-trainer = TabularBERTTrainer(x = train_XX, 
-                           num_bins = 50,
-                           encoding_info = None, 
-                           device = torch.device('cuda:0'))
-trainer.setup_directories_and_logging(phase = 'pretraining',
-                                      project_name = 'GE data pretraining',
-                                      use_wandb = False)
-trainer.set_bert(embedding_dim = 1024,
-              n_layers = 3,
-              n_heads = 8)
-trainer.pretrain(lamb = 0.5,
-               mask_token_prob = 1,
-               random_token_prob = 0.2,
-               unchanged_token_prob = 0.79,
-               num_workers = 0)
+# # Pretraining
+# trainer = TabularBERTTrainer(x = train_XX, 
+#                            num_bins = 50,
+#                            encoding_info = None, 
+#                            device = torch.device('cuda:0'))
+# trainer.setup_directories_and_logging(save_dir = './pretraining',
+#                                       phase = 'pretraining',
+#                                       project_name = 'GE data pretraining',
+#                                       use_wandb = False)
+# trainer.set_bert(embedding_dim = 1024,
+#               n_layers = 3,
+#               n_heads = 8)
+# trainer.pretrain(lamb = 0.5,
+#                mask_token_prob = 1,
+#                random_token_prob = 0.2,
+#                unchanged_token_prob = 0.79,
+#                num_workers = 0)
 
 # Finetuning
 train_X, valid_X, train_labels, valid_labels = train_test_split(train_X, train_labels, train_size = 0.8, random_state = 0)
 # If a pretrained model is available, load it
-# trainer = TabularBERTTrainer.from_pretrained(save_path = './pretraining/version0/model_checkpoint.pt',
-#                                              device = torch.device('cuda:0'))
-trainer.setup_directories_and_logging(phase = 'fine-tuning',
+trainer = TabularBERTTrainer.from_pretrained(save_path = './pretraining/version0/model_checkpoint.pt',
+                                             device = torch.device('cuda:0'))
+
+device = torch.device("cuda:0")
+K = 50
+level_test = torch.arange(1, K + 1, device = device).unsqueeze(1)
+level_test = torch.concat([level_test, torch.zeros(level_test.size(0), 31, dtype = torch.long, device = device)], dim = 1)
+
+trainer.model.eval()
+out = trainer.model.embedding(level_test)
+out = out[:, 1, :]
+
+import numpy as np
+def dist(x, y):
+    D = np.zeros((len(x), len(y)))
+    for i in range(len(x)):
+        for j in range(len(y)):
+            D[i, j] = np.sum((x[i] - y[j])**2)
+            
+    return D
+
+
+outn = out.detach().cpu().numpy()
+dd = dist(outn, outn)
+dd[0, :]
+import matplotlib.pyplot as plt
+fig, ax = plt.subplots()
+im = ax.imshow(dd / dd.max())
+
+
+trainer.setup_directories_and_logging(save_dir = './fine-tuning',
+                                      phase = 'fine-tuning',
                                       project_name = 'GE data fine-tuning',
                                       use_wandb = False)
 trainer.finetune(x = train_X,

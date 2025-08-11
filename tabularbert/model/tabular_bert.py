@@ -284,7 +284,7 @@ class TabularBERTTrainer(nn.Module):
             use_wandb (bool): Whether to use WandB logging. Default: True
         """
         # Create save directory for pretraining/finetuning
-        self.save_dir = make_save_dir(save_dir, phase)
+        self.save_dir = make_save_dir(save_dir)
         
         # Initialize configuration dictionary for comprehensive tracking
         self.config = {
@@ -462,7 +462,7 @@ class TabularBERTTrainer(nn.Module):
         
         Args:
             lr (float): Learning rate. Default: 1e-4
-            weight_decay (float): Weight decay for regularization. Default: 0.001
+            weight_decay (float): Weight decay for regularization. Default: 1e-5
             betas (Tuple[float, float]): Adam beta parameters. Default: (0.9, 0.999)
         """
         # Update optimizer configuration
@@ -597,7 +597,7 @@ class TabularBERTTrainer(nn.Module):
                 No optimizer configuration detected. Initializing with optimized defaults:\n\n
                 Optimizer: AdamW\n
                 Learning Rate: 1e-4\n
-                Weight Decay: 0.01\n
+                Weight Decay: 1e-5\n
                 Beta Parameters: (0.9, 0.999)\n\n
                 Tip: Use trainer.set_optimizer() to customize optimizer before training.\n
                 ======================================================================
@@ -1090,7 +1090,7 @@ class TabularBERTTrainer(nn.Module):
                 self.logger.log_scalar('Loss/Train/Loss', loss_val.item(), global_step)
                 self.logger.log_scalar('Loss/Train/Regularization', regularization_loss.item(), global_step)
                 if metric is not None:
-                    self.logger.log_scalar('Metric/Train', avg_metric, global_step)
+                    self.logger.log_scalar('Metric/Train', m.item(), global_step)
             
             global_step += 1
         
