@@ -267,6 +267,7 @@ class TabularBERTTrainer(nn.Module):
         self.save = False
     
     def setup_directories_and_logging(self, 
+                                      save_dir: str,
                                       phase: str="pretraining",
                                       project_name: str="tabular-bert",
                                       experiment_name: str=None,
@@ -282,11 +283,8 @@ class TabularBERTTrainer(nn.Module):
             experiment_name (str, optional): Experiment name for WandB run
             use_wandb (bool): Whether to use WandB logging. Default: True
         """
-        # Get project root directory
-        project_root = os.path.dirname(pathlib.Path(__file__).parent)
-        
         # Create save directory for pretraining/finetuning
-        self.save_dir = make_save_dir(project_root, phase)
+        self.save_dir = make_save_dir(save_dir, phase)
         
         # Initialize configuration dictionary for comprehensive tracking
         self.config = {
@@ -660,7 +658,7 @@ class TabularBERTTrainer(nn.Module):
         print(f"Model saved to: {self.save_dir}")
     
     def _run_pretraining_epoch(self, optimizer, scheduler, trainloader, mse_loss, wasserstein_loss, 
-                           embed_penalty, global_step):
+                               embed_penalty, global_step):
         """
         Execute one pretraining epoch with efficient batch processing.
         
@@ -1012,7 +1010,7 @@ class TabularBERTTrainer(nn.Module):
         print(f"Model: {sum(p.numel() for p in self.model.parameters()):,} parameters")
         print(f"{'='*60}\n")
         
-        for epoch in tqdm.tqdm(range(epochs), desc='Fine-tuning Progress'):
+        for epoch in tqdm.tqdm(range(epochs), desc='Fine-Tuning Progress'):
             # Training phase
             train_metrics = self._run_finetuning_epoch(
                 optimizer, scheduler, trainloader, criterion, metric, embed_penalty, global_step
@@ -1069,11 +1067,11 @@ class TabularBERTTrainer(nn.Module):
             predictions = self.model(bin_ids)
             
             # Compute losses
-            loss = criterion(predictions, labels)
+            loss_val = criterion(predictions, labels)
             regularization_loss = embed_penalty(self.model.embedding.bin_embedding.weight)
             
             # Combined loss
-            total_batch_loss = loss + regularization_loss
+            total_batch_loss = loss_val + regularization_loss
             
             # Backward pass and optimization
             total_batch_loss.backward()
@@ -1089,7 +1087,7 @@ class TabularBERTTrainer(nn.Module):
             # Log detailed metrics
             if self.save:
                 self.logger.log_scalar('Loss/Train/Total', total_batch_loss.item(), global_step)
-                self.logger.log_scalar('Loss/Train/Loss', loss.item(), global_step)
+                self.logger.log_scalar('Loss/Train/Loss', loss_val.item(), global_step)
                 self.logger.log_scalar('Loss/Train/Regularization', regularization_loss.item(), global_step)
                 if metric is not None:
                     self.logger.log_scalar('Metric/Train', avg_metric, global_step)
