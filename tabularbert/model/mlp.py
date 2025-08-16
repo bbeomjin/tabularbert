@@ -16,7 +16,7 @@ class MLP(nn.Module):
         input_dim (int): Input dimension
         output_dim (int): Output dimension
         hidden_layers (List[int]): List of hidden layer dimensions
-        activation (nn.Module): Activation function class (default: ReLU)
+        activation (str): Activation function class (default: ReLU)
         dropouts (List[float]): List of dropout probabilities (default: 0.1)
         batch_norm (bool): Whether to use batch normalization (default: False)
     """
@@ -26,7 +26,7 @@ class MLP(nn.Module):
         input_dim: int,
         output_dim: int,
         hidden_layers: List[int],
-        activation: nn.Module=nn.ReLU,
+        activation: str='ReLU',
         dropouts: List[float]=0.1,
         batch_norm: bool=False
     ):
@@ -49,7 +49,7 @@ class MLP(nn.Module):
             layers.append(nn.Linear(prev_dim, hidden_dim))
             if batch_norm:
                 layers.append(nn.BatchNorm1d(hidden_dim))
-            layers.append(activation())
+            layers.append(getattr(nn, activation)())
             if dropout > 0:
                 layers.append(nn.Dropout(dropout))
             prev_dim = hidden_dim

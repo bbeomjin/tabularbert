@@ -19,7 +19,7 @@ from ..utils.type import ArrayLike
 from ..utils.utils import DualLogger, CheckPoint, make_save_dir
 from ..utils.data import QuantileDiscretize, SSLDataset, FinetuneDataset
 from ..utils.criterion import TabularMSE, TabularWasserstein
-from ..utils.regularizer import L2EmbedPenalty
+from ..utils.regularizer import L2Penalty, SquaredL2Penalty
 from ..utils.scheduler import WarmupCosineLR
 
 
@@ -267,6 +267,7 @@ class TabularBERTTrainer(nn.Module):
         self.save = False
     
     def setup_directories_and_logging(self, 
+                                      save_dir: str,
                                       phase: str="pretraining",
                                       project_name: str="tabular-bert",
                                       experiment_name: str=None,
@@ -278,15 +279,14 @@ class TabularBERTTrainer(nn.Module):
         dual logging (TensorBoard + WandB) for comprehensive experiment tracking.
         
         Args:
+            save_dir (str): Directory to save model configurations and checkpoints
             project_name (str): WandB project name. Default: "tabular-bert"
             experiment_name (str, optional): Experiment name for WandB run
             use_wandb (bool): Whether to use WandB logging. Default: True
         """
-        # Get project root directory
-        project_root = os.path.dirname(pathlib.Path(__file__).parent)
         
         # Create save directory for pretraining/finetuning
-        self.save_dir = make_save_dir(project_root, phase)
+        self.save_dir = make_save_dir(save_dir)
         
         # Initialize configuration dictionary for comprehensive tracking
         self.config = {
@@ -416,7 +416,7 @@ class TabularBERTTrainer(nn.Module):
     def set_head(self,
                  output_dim: int=1,
                  hidden_layers: List[int]=None,
-                 activation: nn.Module=nn.ReLU,
+                 activation: str='ReLU',
                  dropouts: float | List[float]=0.0,
                  batch_norm: bool=False
                  ) -> None:
@@ -491,6 +491,7 @@ class TabularBERTTrainer(nn.Module):
     def pretrain(self, 
               epochs: int=1000,
               batch_size: int=256,
+              penalty: str='L2',
               lamb: float=0.5,
               mask_token_prob: float=0.1,
               random_token_prob: float=0.1,
@@ -504,6 +505,7 @@ class TabularBERTTrainer(nn.Module):
         Args:
             epochs (int): Number of training epochs. Default: 1000
             batch_size (int): Batch size for training. Default: 256
+            penalty (str): Penalty type for embedding regularization ('L2' or 'SquaredL2'). Default: 'L2'
             lamb (float): Regularization parameter. Default: 0.5
             mask_token_prob (float): Probability of replacing tokens with [MASK]. Default: 0.1
             random_token_prob (float): Probability of replacing tokens with random values. Default: 0.1
@@ -516,6 +518,7 @@ class TabularBERTTrainer(nn.Module):
             self.config['pretraining']['training'] = {
                 'epochs': epochs,
                 'batch_size': batch_size,
+                'penalty': penalty,
                 'regularization_lambda': lamb,
                 'masking': {
                     'mask_token_prob': mask_token_prob,
@@ -583,8 +586,12 @@ class TabularBERTTrainer(nn.Module):
         wasserstein_loss = TabularWasserstein(self.discretizer.encoding_info, ignore_index=ignore_index)
         
         # Define regularizer
-        embed_penalty = L2EmbedPenalty(lamb)
+        if penalty == 'L2':
+            embed_penalty = L2Penalty(lamb)
+        elif penalty == 'SquaredL2':
+            embed_penalty = SquaredL2Penalty(lamb)
         self.lamb = lamb
+        self.penalty = penalty
         
         # Define checkpoint
         if self.save:
@@ -599,7 +606,7 @@ class TabularBERTTrainer(nn.Module):
                 No optimizer configuration detected. Initializing with optimized defaults:\n\n
                 Optimizer: AdamW\n
                 Learning Rate: 1e-4\n
-                Weight Decay: 0.01\n
+                Weight Decay: 1e-5\n
                 Beta Parameters: (0.9, 0.999)\n\n
                 Tip: Use trainer.set_optimizer() to customize optimizer before training.\n
                 ======================================================================
@@ -640,27 +647,27 @@ class TabularBERTTrainer(nn.Module):
                 )
                 
                 # Model checkpointing based on validation loss
-                current_loss = valid_metrics['avg_loss']
+                current_loss = valid_metrics['avg_total_loss']
                 if self.save:
                     checkpoint(current_loss, self.model, self.config)
                 
                 # Elegant progress reporting
-                self._log_epoch_progress(train_metrics['avg_loss'], valid_metrics['avg_loss'])
+                self._log_epoch_progress(train_metrics['avg_total_loss'], valid_metrics['avg_total_loss'])
             else:
                 # No validation data - checkpoint on training loss
-                current_loss = train_metrics['avg_loss']
+                current_loss = train_metrics['avg_total_loss']
                 if self.save:
                     checkpoint(current_loss, self.model, self.config)
                 
                 # Training-only progress reporting
-                self._log_epoch_progress(train_metrics['avg_loss'])
+                self._log_epoch_progress(train_metrics['avg_total_loss'])
         
         self.save = False
         print(f"\n Pretraining completed!")
         print(f"Model saved to: {self.save_dir}")
     
     def _run_pretraining_epoch(self, optimizer, scheduler, trainloader, mse_loss, wasserstein_loss, 
-                           embed_penalty, global_step):
+                               embed_penalty, epoch):
         """
         Execute one pretraining epoch with efficient batch processing.
         
@@ -698,21 +705,20 @@ class TabularBERTTrainer(nn.Module):
             
             # Log detailed metrics
             if self.save:
-                self.logger.log_scalar('Loss/Train/Total', total_batch_loss.item(), global_step)
-                self.logger.log_scalar('Loss/Train/Wasserstein', wasserstein_loss_val.item(), global_step)
-                self.logger.log_scalar('Loss/Train/MSE', mse_loss_val.item(), global_step)
-                self.logger.log_scalar('Loss/Train/Regularization', regularization_loss.item(), global_step)
+                self.logger.log_scalar('Loss/Train/Total', total_batch_loss.item(), epoch)
+                self.logger.log_scalar('Loss/Train/Wasserstein', wasserstein_loss_val.item(), epoch)
+                self.logger.log_scalar('Loss/Train/MSE', mse_loss_val.item(), epoch)
+                self.logger.log_scalar('Loss/Train/Regularization', regularization_loss.item(), epoch)
             
-            global_step += 1
+            epoch += 1
         
         return {
-            'avg_loss': total_loss / num_batches,
-            'total_loss': total_loss,
-            'global_step': global_step
+            'avg_total_loss': total_loss / num_batches,
+            'global_step': epoch,
         }
     
     def _run_pretraining_validation_epoch(self, validloader, mse_loss, wasserstein_loss, 
-                             embed_penalty, epoch):
+                                          embed_penalty, epoch):
         """
         Execute one pretraining validation epoch with no gradient computation.
         
@@ -721,6 +727,8 @@ class TabularBERTTrainer(nn.Module):
         """
         self.model.eval()
         total_loss = 0.0
+        total_wasserstein_loss = 0.0
+        total_mse_loss = 0.0
         num_batches = len(validloader)
         
         with torch.no_grad():
@@ -740,16 +748,17 @@ class TabularBERTTrainer(nn.Module):
                 # Combined loss
                 total_batch_loss = wasserstein_loss_val + mse_loss_val + regularization_loss
                 total_loss += total_batch_loss.item()
+                total_wasserstein_loss += wasserstein_loss_val.item()
+                total_mse_loss += mse_loss_val.item()
                 
                 # Log validation metrics
                 if self.save:
-                    self.logger.log_scalar('Loss/Valid/Total', total_batch_loss.item(), epoch)
-                    self.logger.log_scalar('Loss/Valid/Wasserstein', wasserstein_loss_val.item(), epoch)
-                    self.logger.log_scalar('Loss/Valid/MSE', mse_loss_val.item(), epoch)
+                    self.logger.log_scalar('Loss/Valid/AvgTotal', total_loss / num_batches, epoch)
+                    self.logger.log_scalar('Loss/Valid/AvgWasserstein', total_wasserstein_loss / num_batches, epoch)
+                    self.logger.log_scalar('Loss/Valid/AvgMSE', total_mse_loss / num_batches, epoch)
         
         return {
-            'avg_loss': total_loss / num_batches,
-            'total_loss': total_loss
+            'avg_total_loss': total_loss / num_batches,
         }
     
     def _log_epoch_progress(self, train_loss, valid_loss=None, train_metric=None, valid_metric=None):
@@ -793,12 +802,14 @@ class TabularBERTTrainer(nn.Module):
         num_bins = config['data_config']['num_bins']
         encoding_info = config['data_config']['encoding_info']
         lamb = config['regularization_lambda']
+        penalty = config['penalty']
         
         trainer = cls(num_bins = num_bins,
                       encoding_info = encoding_info,
                       device = device)
         
         trainer.lamb = lamb
+        trainer.penalty = penalty
         trainer.model = TabularBERT(**config['model_config'])
         trainer.model.load_state_dict(config['model_state_dict'])
         trainer.model.to(device)
@@ -818,6 +829,7 @@ class TabularBERTTrainer(nn.Module):
                  num_classes: int=None,
                  epochs: int=1000,
                  batch_size: int=256,
+                 penalty: str=None,
                  lamb: float=None,
                  criterion: nn.Module=None,
                  metric: nn.Module=None,
@@ -898,7 +910,9 @@ class TabularBERTTrainer(nn.Module):
         
         if lamb is None:
             lamb = self.lamb
-            
+        if penalty is None:
+            penalty = self.penalty
+        
         # Update training configuration
         if self.save:
             self.config['fine-tuning']['training'] = {
@@ -928,6 +942,7 @@ class TabularBERTTrainer(nn.Module):
                 valid_target_y = valid_y.values 
             else:
                 valid_target_y = valid_y
+                
             valid_target_y, _ = self._process_labels(valid_target_y, label_stats['reference'])
             valid_dataset = FinetuneDataset(valid_bin_ids, valid_target_y)
             validloader = DataLoader(valid_dataset, 
@@ -966,11 +981,17 @@ class TabularBERTTrainer(nn.Module):
             self.set_head(output_dim = output_dim)
         
         # Define regularizer
-        embed_penalty = L2EmbedPenalty(lamb)
+        if penalty == 'L2':
+            embed_penalty = L2Penalty(lamb)
+        elif penalty == 'SquaredL2':
+            embed_penalty = SquaredL2Penalty(lamb)
         
         # Define checkpoint
         if self.save:
-            checkpoint = CheckPoint(self.save_dir, phase='finetuning', max=False)
+            if metric is not None and task_type == 'classification':
+                checkpoint = CheckPoint(self.save_dir, phase='finetuning', max=True)
+            else:
+                checkpoint = CheckPoint(self.save_dir, phase='finetuning', max=False)
         
         # Define model
         self.model = DownstreamModel(pretrained_model=self.model,
@@ -1026,21 +1047,25 @@ class TabularBERTTrainer(nn.Module):
                 )
                 
                 # Model checkpointing based on validation loss
-                current_loss = valid_metrics['avg_loss']
                 if self.save:
-                    checkpoint(current_loss, self.model, self.config)
-                
+                    if metric is not None:
+                        checkpoint(valid_metrics['metric'], self.model, self.config)
+                    else:
+                        checkpoint(valid_metrics['avg_total_loss'], self.model, self.config)
+                    
                 # Elegant progress reporting
-                self._log_epoch_progress(train_metrics['avg_loss'], valid_metrics['avg_loss'],
+                self._log_epoch_progress(train_metrics['avg_total_loss'], valid_metrics['avg_total_loss'],
                                          train_metrics['metric'], valid_metrics['metric'])
             else:
                 # No validation data - checkpoint on training loss
-                current_loss = train_metrics['avg_loss']
                 if self.save:
-                    checkpoint(current_loss, self.model, self.config)
+                    if metric is not None:
+                        checkpoint(train_metrics['metric'], self.model, self.config)
+                    else:
+                        checkpoint(train_metrics['avg_total_loss'], self.model, self.config)
                 
                 # Training-only progress reporting
-                self._log_epoch_progress(train_metrics['avg_loss'],
+                self._log_epoch_progress(train_metrics['avg_total_loss'],
                                          train_metrics['metric'])
         
         print(f"\n Fine-tuning completed!")
@@ -1048,7 +1073,7 @@ class TabularBERTTrainer(nn.Module):
             print(f"Model saved to: {self.save_dir}")
         self.save = False
         
-    def _run_finetuning_epoch(self, optimizer, scheduler, trainloader, criterion, metric, embed_penalty, global_step):
+    def _run_finetuning_epoch(self, optimizer, scheduler, trainloader, criterion, metric, embed_penalty, epoch):
         """
         Execute one fine-tuning epoch with efficient batch processing.
         
@@ -1069,11 +1094,11 @@ class TabularBERTTrainer(nn.Module):
             predictions = self.model(bin_ids)
             
             # Compute losses
-            loss = criterion(predictions, labels)
+            loss_val = criterion(predictions, labels)
             regularization_loss = embed_penalty(self.model.embedding.bin_embedding.weight)
             
             # Combined loss
-            total_batch_loss = loss + regularization_loss
+            total_batch_loss = loss_val + regularization_loss
             
             # Backward pass and optimization
             total_batch_loss.backward()
@@ -1088,19 +1113,18 @@ class TabularBERTTrainer(nn.Module):
             
             # Log detailed metrics
             if self.save:
-                self.logger.log_scalar('Loss/Train/Total', total_batch_loss.item(), global_step)
-                self.logger.log_scalar('Loss/Train/Loss', loss.item(), global_step)
-                self.logger.log_scalar('Loss/Train/Regularization', regularization_loss.item(), global_step)
+                self.logger.log_scalar('Loss/Train/Total', total_batch_loss.item(), epoch)
+                self.logger.log_scalar('Loss/Train/Loss', loss_val.item(), epoch)
+                self.logger.log_scalar('Loss/Train/Regularization', regularization_loss.item(), epoch)
                 if metric is not None:
-                    self.logger.log_scalar('Metric/Train', avg_metric, global_step)
+                    self.logger.log_scalar('Metric/Train', avg_metric, epoch)
             
-            global_step += 1
+            epoch += 1
         
         return {
-            'avg_loss': total_loss / num_batches,
-            'total_loss': total_loss,
+            'avg_total_loss': total_loss / num_batches,
             'metric': avg_metric if metric is not None else None,
-            'global_step': global_step
+            'global_step': epoch
         }    
         
     def _run_finetuning_validation_epoch(self, validloader, criterion, metric, embed_penalty, epoch):
@@ -1112,6 +1136,7 @@ class TabularBERTTrainer(nn.Module):
         """
         self.model.eval()
         total_loss = 0.0
+        avg_loss = 0.0
         avg_metric = 0.0
         num_batches = len(validloader)
         
@@ -1130,6 +1155,7 @@ class TabularBERTTrainer(nn.Module):
                 # Combined loss
                 total_batch_loss = loss_val + regularization_loss
                 total_loss += total_batch_loss.item()
+                avg_loss += loss_val.item() / num_batches
                 
                 # Metrics tracking
                 if metric is not None:
@@ -1138,15 +1164,13 @@ class TabularBERTTrainer(nn.Module):
                 
                 # Log validation metrics
                 if self.save:
-                    self.logger.log_scalar('Loss/Valid/Total', total_batch_loss.item(), epoch)
-                    self.logger.log_scalar('Loss/Valid/Loss', loss_val.item(), epoch)
-                    self.logger.log_scalar('Loss/Valid/Regularization', regularization_loss.item(), epoch)
+                    self.logger.log_scalar('Loss/Valid/AvgTotal', total_loss / num_batches, epoch)
+                    self.logger.log_scalar('Loss/Valid/AvgLoss', avg_loss, epoch)
                     if metric is not None:
                         self.logger.log_scalar('Metric/Valid', avg_metric, epoch)
         
         return {
-            'avg_loss': total_loss / num_batches,
-            'total_loss': total_loss,
+            'avg_total_loss': total_loss / num_batches,
             'metric': avg_metric if metric is not None else None,
         }
         
@@ -1198,4 +1222,35 @@ class TabularBERTTrainer(nn.Module):
         }
         
         return y, label_stats
+        
+    @classmethod                
+    def from_finetuned(cls, save_path, device):
+        """
+        Load a fine-tuned TabularBERT downstream model from a checkpoint.
+        
+        This method properly loads a pretrained model with device mapping,
+        configuration validation, and state restoration for fine-tuning.
+        
+        Args:
+            save_path (str): Path to the pre-trained model checkpoint file
+        
+        Raises:
+            FileNotFoundError: If the checkpoint file doesn't exist
+            ValueError: If the model configuration is incompatible
+        """
+        
+        if not os.path.exists(save_path):
+            raise FileNotFoundError(f"Checkpoint file not found: {save_path}")
+        
+        # Load the pretrained model configuration
+        config = torch.load(save_path)
+        pretrained = TabularBERT(**config['model_config']['tabular_bert'])
+        head = MLP(**config['model_config']['mlp_head'])
+        model = DownstreamModel(pretrained, head)
+        model.load_state_dict(config['model_state_dict'])
+        model.to(device)
+
+        print(f"Successfully loaded fine-tuned model from: {save_path}")
+        
+        return model
         

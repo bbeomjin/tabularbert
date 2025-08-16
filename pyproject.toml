@@ -54,10 +54,10 @@ dev = [
 all = ["wandb>=0.12.0"]
 
 [project.urls]
-Homepage = "https://github.com/bbeomjin/TabularBERT"
+Homepage = "https://github.com/bbeomjin/tabularbert"
 Documentation = "https://tabularbert.readthedocs.io/"
-Repository = "https://github.com/bbeomjin/TabularBERT"
-"Bug Tracker" = "https://github.com/bbeomjin/TabularBERT/issues"
+Repository = "https://github.com/bbeomjin/tabularbert"
+"Bug Tracker" = "https://github.com/bbeomjin/tabularbert/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]

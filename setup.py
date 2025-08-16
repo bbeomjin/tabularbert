@@ -71,8 +71,8 @@ setup(
     },
     keywords="tabular-data, bert, transformer, machine-learning, deep-learning, self-supervised",
     project_urls={
-        "Bug Reports": "https://github.com/bbeomjin/TabularBERT/issues",
-        "Source": "https://github.com/bbeomjin/TabularBERT",
+        "Bug Reports": "https://github.com/bbeomjin/tabularbert/issues",
+        "Source": "https://github.com/bbeomjin/tabularbert",
         "Documentation": "https://tabularbert.readthedocs.io/",
     },
 )

@@ -37,7 +37,8 @@ class CheckPoint:
                 'max_len': model.max_len,
                 'max_position': model.max_position
             },
-            'regularization_lambda': config['pretraining']['training']['regularization_lambda']
+            'regularization_lambda': config['pretraining']['training']['regularization_lambda'],
+            'penalty': config['pretraining']['training']['penalty']
         }
     
     def _create_finetuning_checkpoint(self, model, config):
@@ -54,15 +55,17 @@ class CheckPoint:
                     'n_heads': model.bert.n_heads,
                     'dropout': model.bert.dropout,
                 },
-                'mlp': {
+                'mlp_head': {
                     'input_dim': model.head.input_dim,
                     'output_dim': model.head.output_dim,
                     'hidden_layers': model.head.hidden_layers,
-                    'activation': model.head.activation.__name__,
+                    'activation': model.head.activation,
                     'dropouts': model.head.dropouts,
                     'batch_norm': model.head.batch_norm
                 }
-            }
+            },
+            'regularization_lambda': config['fine-tuning']['training']['regularization_lambda'],
+            'penalty': config['fine-tuning']['training']['penalty']
         }
     
     def _save_checkpoint(self, model, config):
@@ -92,11 +95,11 @@ class CheckPoint:
 
 
 
-def make_save_dir(dir, type):
-    folder_name = os.path.join(type, 'version')
+def make_save_dir(dir):
+    dir = os.path.join(dir, 'version')
     v = 0
     while True:
-        path = os.path.join(dir, folder_name + str(v))
+        path = dir + str(v)
         if os.path.exists(path) is not True:
             os.mkdir(path)
             break
