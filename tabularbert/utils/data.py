@@ -106,7 +106,7 @@ class QuantileDiscretize(DiscretizeBase):
              num_bins: int,
              ) -> ArrayLike:
         bins = np.quantile(x, np.linspace(0, 1, num_bins + 1))
-        bins[-1] = np.Inf
+        bins[-1] = np.inf
         return bins[1:]
 
     
