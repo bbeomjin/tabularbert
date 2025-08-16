@@ -1,12 +1,13 @@
 import torch
 import os
+import warnings
 from torch.utils.tensorboard import SummaryWriter
 try:
     import wandb
     WANDB_AVAILABLE = True
 except ImportError:
     WANDB_AVAILABLE = False
-    warnings.warn("WandB not available. Install with: pip install wandb")
+    warnings.warn("WandB is not installed. Falling back to TensorBoard for logging. To enable WandB support, install it with: pip install wandb")
 
 class CheckPoint:
     def __init__(self, save_path: str, phase: str, max: bool):
