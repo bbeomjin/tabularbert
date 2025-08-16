@@ -1066,7 +1066,7 @@ class TabularBERTTrainer(nn.Module):
                 
                 # Training-only progress reporting
                 self._log_epoch_progress(train_metrics['avg_total_loss'],
-                                         train_metrics['metric'])
+                                         train_metric = train_metrics['metric'])
         
         print(f"\n Fine-tuning completed!")
         if self.save:
