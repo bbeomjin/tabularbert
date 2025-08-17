@@ -24,7 +24,7 @@ TabularBERT is a comprehensive framework for tabular data modeling using BERT-ba
 
 3. **Install the package locally:**
    ```bash
-   pip install -e .
+   pip install .
    ```
 
 ### Method 2: Install from ZIP Archive
