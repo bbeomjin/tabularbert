@@ -285,6 +285,8 @@ class TabularBERTTrainer(nn.Module):
             use_wandb (bool): Whether to use WandB logging. Default: True
         """
         
+        assert phase in ['pretraining', 'fine-tuning'], "Phase must be 'pretraining' or 'fine-tuning'"
+        
         # Create save directory for pretraining/finetuning
         self.save_dir = make_save_dir(save_dir)
         
@@ -417,7 +419,7 @@ class TabularBERTTrainer(nn.Module):
                  output_dim: int=1,
                  hidden_layers: List[int]=None,
                  activation: str='ReLU',
-                 dropouts: float | List[float]=0.0,
+                 dropouts: float | List[float]=0.3,
                  batch_norm: bool=False
                  ) -> None:
         """
@@ -427,7 +429,7 @@ class TabularBERTTrainer(nn.Module):
             output_dim (int): Output dimension for the head. Default: 1
             hidden_layers (List[int]): Hidden dimensions for the head. Default: [Embedding Dimension]
             activation (nn.Module): Activation function for the head. Default: ReLU
-            dropouts (float | List[float]): Dropout probabilities for the head. Default: 0.0
+            dropouts (float | List[float]): Dropout probabilities for the head. Default: 0.3
             batch_norm (bool): Whether to use batch normalization. Default: False
         """
         
@@ -606,14 +608,14 @@ class TabularBERTTrainer(nn.Module):
                 No optimizer configuration detected. Initializing with optimized defaults:\n\n
                 Optimizer: AdamW\n
                 Learning Rate: 1e-4\n
-                Weight Decay: 1e-5\n
+                Weight Decay: 1e-3\n
                 Beta Parameters: (0.9, 0.999)\n\n
                 Tip: Use trainer.set_optimizer() to customize optimizer before training.\n
                 ======================================================================
                 """,
                 UserWarning
             )
-            self.set_optimizer()
+            self.set_optimizer(weight_decay=1e-3)
             
         optimizer = self.optimizer(params=self.model.parameters())
         total_steps = epochs * len(trainloader)
@@ -662,9 +664,12 @@ class TabularBERTTrainer(nn.Module):
                 # Training-only progress reporting
                 self._log_epoch_progress(train_metrics['avg_total_loss'])
         
-        self.save = False
         print(f"\n Pretraining completed!")
         print(f"Model saved to: {self.save_dir}")
+        
+        # Reset
+        self.save = False
+        self.optimizer = None
     
     def _run_pretraining_epoch(self, optimizer, scheduler, trainloader, mse_loss, wasserstein_loss, 
                                embed_penalty, epoch):
@@ -872,11 +877,13 @@ class TabularBERTTrainer(nn.Module):
             valid_bin_ids = discretizer.discretize(valid_x)
         
         if self.save:
-            self.config['data']['num_bins'] = num_bins
-            self.config['data']['encoding_info'] = encoding_info
-            self.config['data']['data_shape'] = bin_ids.shape if hasattr(bin_ids, 'shape') else None
-            self.config['data']['has_validation'] = valid_bin_ids is not None
-            self.config['data']['validation_shape'] = valid_bin_ids.shape if valid_bin_ids is not None else None
+            self.config['data'] = {
+                'num_bins': num_bins,
+                'encoding_info': encoding_info,
+                'data_shape': bin_ids.shape if hasattr(bin_ids, 'shape') else None,
+                'has_validation': valid_bin_ids is not None,
+                'validation_shape': valid_bin_ids.shape if valid_bin_ids is not None else None
+            }
             self._save_config()
         
         # Convert pandas objects to numpy arrays
@@ -972,7 +979,7 @@ class TabularBERTTrainer(nn.Module):
                 Hidden Layers: 1\n
                 Hidden Layer Dimensions: Embedding Dimension\n
                 Activation Function: ReLU\n
-                Dropout Rate: 0.0\n
+                Dropout Rate: 0.3\n
                 Batch Normalization: False\n\n
                 Tip: Use trainer.set_head() to customize head before training.\n
                 ======================================================================
@@ -1007,14 +1014,14 @@ class TabularBERTTrainer(nn.Module):
                 No optimizer configuration detected. Initializing with optimized defaults:\n\n
                 Optimizer: AdamW\n
                 Learning Rate: 1e-4\n
-                Weight Decay: 0.01\n
+                Weight Decay: 1e-5\n
                 Beta Parameters: (0.9, 0.999)\n\n
                 Tip: Use trainer.set_optimizer() to customize optimizer before training.\n
                 ======================================================================
                 """,
                 UserWarning
             )
-            self.set_optimizer()
+            self.set_optimizer(weight_decay=1e-5)
             
         optimizer = self.optimizer(params=self.model.parameters())
         total_steps = epochs * len(trainloader)
