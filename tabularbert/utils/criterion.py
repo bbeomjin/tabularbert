@@ -164,7 +164,7 @@ class TabularWasserstein(nn.Module):
         target_cumsum = target_onehot.cumsum(dim=-1)
         
         # Compute Wasserstein distance (L2 norm of cumulative differences)
-        wasserstein_dist = ((pred_cumsum - target_cumsum) ** 2).sum(dim=-1)
+        wasserstein_dist = ((pred_cumsum - target_cumsum)**2).sum(dim=-1)
         
         return wasserstein_dist[valid_mask].mean()
 
