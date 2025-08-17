@@ -920,6 +920,7 @@ class TabularBERTTrainer(nn.Module):
                 'num_classes': num_classes,
                 'epochs': epochs,
                 'batch_size': batch_size,
+                'penalty': penalty,
                 'regularization_lambda': lamb,
                 'criterion': criterion,
                 'num_workers': num_workers
