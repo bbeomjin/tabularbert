@@ -109,6 +109,27 @@ class QuantileDiscretize(DiscretizeBase):
         bins[-1] = np.inf
         return bins[1:]
 
+
+
+class UniformDiscretize(DiscretizeBase):
+    def __init__(self, 
+                 num_bins: int = 10,
+                 encoding_info: Dict[str, Dict[str, int]] = None
+                 ) -> None:
+        
+        super(UniformDiscretize, self).__init__(
+            num_bins = num_bins,
+            encoding_info = encoding_info
+        )
+        
+    def _fit(self, 
+             x: ArrayLike,
+             num_bins: int,
+             ) -> ArrayLike:
+        bins = np.linspace(np.min(x), np.max(x), num_bins + 1)
+        bins[-1] = np.inf
+        return bins[1:]
+    
     
     
 class SSLDataset(Dataset):

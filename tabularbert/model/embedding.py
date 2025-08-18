@@ -100,15 +100,13 @@ class PositionalEmbedding(nn.Module):
             torch.Tensor: Positional embeddings of shape (batch_size, sequence_length, embedding_dim)
         """
         seq_len = x.size(1)
-        # Create position indices for the sequence length
+        
+        # Create position indices
         positions = torch.arange(seq_len, device = x.device, dtype = torch.long)
-        # Expand to match batch size
-        positions = positions.unsqueeze(0).expand(x.size(0), -1)
         return self.embedding(positions)
 
 
     
-
 if __name__ == '__main__':
     embedding = NumEmbedding(10, 3, 16)
     x = torch.randint(10, (256, 3))
