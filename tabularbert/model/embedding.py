@@ -21,7 +21,7 @@ class NumEmbedding(nn.Module):
                  max_len: int,
                  max_position: int,
                  embedding_dim: int,
-                 mask_idx: int = None) -> None:
+                 mask_idx: int=None) -> None:
         super(NumEmbedding, self).__init__()
         self.max_len = max_len
         self.max_position = max_position
@@ -37,7 +37,7 @@ class NumEmbedding(nn.Module):
         
         # Pre-register [CLS] token as a buffer for efficiency
         # This avoids creating the tensor in every forward pass
-        self.register_buffer('cls_token', torch.zeros(1, 1, dtype = torch.long))
+        self.register_buffer('cls_token', torch.zeros(1, 1, dtype=torch.long))
         
     def forward(self, bin_ids: torch.Tensor) -> torch.Tensor:
         """
@@ -64,7 +64,7 @@ class NumEmbedding(nn.Module):
         embedded = bin_embedded + positional_embedded
         
         # Prepend CLS token
-        embedded = torch.cat([cls_embedded, embedded], dim = 1)
+        embedded = torch.cat([cls_embedded, embedded], dim=1)
         
         return embedded
         
@@ -102,7 +102,7 @@ class PositionalEmbedding(nn.Module):
         seq_len = x.size(1)
         
         # Create position indices
-        positions = torch.arange(seq_len, device = x.device, dtype = torch.long)
+        positions = torch.arange(seq_len, device=x.device, dtype=torch.long)
         return self.embedding(positions)
 
 

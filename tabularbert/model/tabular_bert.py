@@ -2,7 +2,6 @@ import functools
 import json
 import os
 import warnings
-import pathlib
 from typing import Dict, Tuple, List
 
 import torch
@@ -11,7 +10,6 @@ import tqdm
 from torch.utils.data import DataLoader
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import QuantileTransformer
 
 from .embedding import NumEmbedding
 from .bert import BERT, Classifier, Regressor
@@ -534,15 +532,14 @@ class TabularBERTTrainer(nn.Module):
             # Save updated configuration before training starts
             self._save_config()
         
-        scaler = QuantileTransformer(n_quantiles=10000,
-                                     output_distribution='uniform',
-                                     subsample=None)
-        scaler.fit(self.x)
-        transformed_x = scaler.transform(self.x)
+        # scaler = QuantileTransformer(n_quantiles=10000,
+        #                              output_distribution='uniform',
+        #                              subsample=None)
+        # scaler.fit(self.x)
+        # transformed_x = scaler.transform(self.x)
         
         train_dataset = SSLDataset(
-            # x = self.x,
-            x = transformed_x,
+            x = self.x,
             bin_ids=self.bin_ids,
             encoding_info=self.discretizer.encoding_info,
             mask_token_prob=mask_token_prob,
@@ -557,10 +554,9 @@ class TabularBERTTrainer(nn.Module):
                                  num_workers=num_workers)
 
         if self.valid_x is not None:
-            transformed_valid_x = scaler.transform(self.valid_x)
+            # transformed_valid_x = scaler.transform(self.valid_x)
             valid_dataset = SSLDataset(
-                # x = self.valid_x,
-                x = transformed_valid_x,
+                x = self.valid_x,
                 bin_ids=self.valid_bin_ids,
                 encoding_info=self.discretizer.encoding_info,
                 mask_token_prob=mask_token_prob,

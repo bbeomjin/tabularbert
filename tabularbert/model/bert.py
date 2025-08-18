@@ -21,10 +21,10 @@ class BERT(nn.Module):
     """
 
     def __init__(self, 
-                 embedding_dim: int = 256,
-                 n_layers: int = 12, 
-                 n_heads: int = 12,
-                 dropout: float = 0.1) -> None:
+                 embedding_dim: int=256,
+                 n_layers: int=12, 
+                 n_heads: int=12,
+                 dropout: float=0.1) -> None:
         super(BERT, self).__init__()
         
         # Validate that embedding_dim is divisible by n_heads
