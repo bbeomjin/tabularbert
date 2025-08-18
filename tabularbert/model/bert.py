@@ -42,7 +42,6 @@ class BERT(nn.Module):
             nhead=n_heads,
             dropout=dropout,
             batch_first=True,
-            norm_first=True  # Pre-layer normalization for better training stability
         )
         
         self.transformer = nn.TransformerEncoder(
