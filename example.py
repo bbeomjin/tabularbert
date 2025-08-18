@@ -13,14 +13,9 @@ y = data.iloc[:, -1].values
 y = pd.Categorical(y).codes.astype(int)
 
 train_X, test_X, train_labels, test_labels = train_test_split(X, y, train_size = 0.8, random_state = 0)
-scaler = QuantileTransformer(n_quantiles=10000,
-                             output_distribution='uniform',
-                             subsample=None)
-scaler.fit(train_X)
-train_XX = scaler.transform(train_X)
 
 # Pretraining
-trainer = TabularBERTTrainer(x=train_XX,
+trainer = TabularBERTTrainer(x=train_X,
                              num_bins=50,
                              encoding_info=None,
                              device=torch.device('cuda:0'))
