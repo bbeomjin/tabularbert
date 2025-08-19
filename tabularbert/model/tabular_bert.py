@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 import tqdm
 from torch.utils.data import DataLoader
+from torch.optim.lr_scheduler import CosineAnnealingLR 
 import pandas as pd
 import numpy as np
 
@@ -19,7 +20,7 @@ from ..utils.utils import DualLogger, CheckPoint, make_save_dir
 from ..utils.data import QuantileDiscretize, SSLDataset, FinetuneDataset
 from ..utils.criterion import TabularMSE, TabularWasserstein
 from ..utils.regularizer import L2Penalty, SquaredL2Penalty
-from ..utils.scheduler import WarmupCosineLR
+# from ..utils.scheduler import WarmupCosineLR
 
 
 class TabularBERT(nn.Module):
@@ -367,7 +368,7 @@ class TabularBERTTrainer(nn.Module):
                 embedding_dim: int=1024,
                 n_layers: int=3,
                 n_heads: int=8,
-                dropout: float=0.3) -> None:
+                dropout: float=0.1) -> None:
         """
         Initialize the TabularBERT model for masked language modeling.
         
@@ -375,7 +376,7 @@ class TabularBERTTrainer(nn.Module):
             embedding_dim (int): Dimension of embedding vectors. Default: 1024
             n_layers (int): Number of transformer encoder layers. Default: 3
             n_heads (int): Number of attention heads. Default: 8
-            dropout (float): Dropout probability for regularization. Default: 0.3
+            dropout (float): Dropout probability for regularization. Default: 0.1
         """
         max_len = max([v for v in self.discretizer.encoding_info.values()])
         max_position = len(self.discretizer.encoding_info)
@@ -415,22 +416,27 @@ class TabularBERTTrainer(nn.Module):
             self._save_config()
     
     def set_head(self,
-                 output_dim: int=1,
+                 output_dim: int=None,
                  hidden_layers: List[int]=None,
                  activation: str='ReLU',
-                 dropouts: float | List[float]=0.3,
+                 dropouts: float | List[float]=0.1,
                  batch_norm: bool=False
                  ) -> None:
         """
         Configure the head for fine-tuning.
         
         Args:
-            output_dim (int): Output dimension for the head. Default: 1
+            output_dim (int): Output dimension for the head. Default: Automatically inferred from the task type.
             hidden_layers (List[int]): Hidden dimensions for the head. Default: [Embedding Dimension]
             activation (nn.Module): Activation function for the head. Default: ReLU
-            dropouts (float | List[float]): Dropout probabilities for the head. Default: 0.3
+            dropouts (float | List[float]): Dropout probabilities for the head. Default: 0.1
             batch_norm (bool): Whether to use batch normalization. Default: False
         """
+        
+        if output_dim is None:
+            output_dim = self.output_dim
+        else:
+            self.output_dim = output_dim
         
         # Update model configuration
         hidden_layers = [self.model.embedding_dim] if hidden_layers is None else hidden_layers
@@ -457,7 +463,7 @@ class TabularBERTTrainer(nn.Module):
         
     def set_optimizer(self,
                       lr: float=1e-4,
-                      weight_decay: float=1e-5,
+                      weight_decay: float=1e-3,
                       betas: Tuple[float, float]=(0.9, 0.999)
                       ) -> None:
         """
@@ -581,7 +587,7 @@ class TabularBERTTrainer(nn.Module):
                 Embedding Dimension: 1024\n
                 Transformer Layers: 3\n
                 Attention Heads: 8\n
-                Dropout Rate: 0.3\n\n
+                Dropout Rate: 0.1\n\n
                 Tip: Use trainer.set_bert() to customize architecture before training.\n
                 ======================================================================
                 """,
@@ -625,11 +631,7 @@ class TabularBERTTrainer(nn.Module):
             
         optimizer = self.optimizer(params=self.model.parameters())
         total_steps = epochs * len(trainloader)
-        scheduler = WarmupCosineLR(optimizer, 
-                                   warmup_epochs=1,
-                                   max_epochs=total_steps, 
-                                   eta_min=1e-6,
-                                   warmup_start_lr=1e-5)
+        scheduler = CosineAnnealingLR(optimizer, T_max=total_steps)
         
         # Training loop with progress tracking
         global_step = 0
@@ -973,7 +975,7 @@ class TabularBERTTrainer(nn.Module):
             )
         
         if self.head is None:
-            output_dim = num_classes if task_type == 'classification' else target_y.shape[1]
+            self.output_dim = num_classes if task_type == 'classification' else target_y.shape[1]
             warnings.warn(
                 """
                 TabularBERT Model Auto-Configuration\n
@@ -989,10 +991,10 @@ class TabularBERTTrainer(nn.Module):
                 Batch Normalization: False\n\n
                 Tip: Use trainer.set_head() to customize head before training.\n
                 ======================================================================
-                """.format(output_dim = output_dim),
+                """.format(output_dim = self.output_dim),
                 UserWarning
             )
-            self.set_head(output_dim = output_dim)
+            self.set_head()
         
         # Define regularizer
         if penalty == 'L2':
@@ -1002,10 +1004,7 @@ class TabularBERTTrainer(nn.Module):
         
         # Define checkpoint
         if self.save:
-            if metric is not None and task_type == 'classification':
-                checkpoint = CheckPoint(self.save_dir, phase='finetuning', max=True)
-            else:
-                checkpoint = CheckPoint(self.save_dir, phase='finetuning', max=False)
+            checkpoint = CheckPoint(self.save_dir, phase='finetuning', max=False)
         
         # Define model
         self.model = DownstreamModel(pretrained_model=self.model,
@@ -1031,11 +1030,7 @@ class TabularBERTTrainer(nn.Module):
             
         optimizer = self.optimizer(params=self.model.parameters())
         total_steps = epochs * len(trainloader)
-        scheduler = WarmupCosineLR(optimizer, 
-                                   warmup_epochs=1,
-                                   max_epochs=total_steps, 
-                                   eta_min=1e-6,
-                                   warmup_start_lr=1e-5)
+        scheduler = CosineAnnealingLR(optimizer, T_max=total_steps)
         
         # Training loop with progress tracking
         global_step = 0
