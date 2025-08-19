@@ -4,7 +4,12 @@ import torch.nn as nn
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import QuantileTransformer, StandardScaler
 from tabularbert import TabularBERTTrainer
-from tabularbert.utils.metrics import Accuracy
+from tabularbert.utils.metrics import ClassificationError
+
+# Set seed
+torch.manual_seed(0)
+torch.cuda.manual_seed(0)
+torch.backends.cudnn.deterministic = True
 
 # Load and preprocess data
 data = pd.read_csv("./datasets/GE.csv")
@@ -14,8 +19,15 @@ y = pd.Categorical(y).codes.astype(int)
 
 train_X, test_X, train_labels, test_labels = train_test_split(X, y, train_size = 0.8, random_state = 0)
 
+# Preprocessing
+scaler = QuantileTransformer(n_quantiles=10000,
+                             output_distribution='uniform',
+                             subsample=None)
+scaler.fit(train_X)
+train_XX = scaler.transform(train_X)
+
 # Pretraining
-trainer = TabularBERTTrainer(x=train_X,
+trainer = TabularBERTTrainer(x=train_XX,
                              num_bins=50,
                              encoding_info=None,
                              device=torch.device('cuda:0'))
@@ -48,7 +60,7 @@ trainer.finetune(x=train_X,
                  epochs=1000,
                  batch_size=256,
                  criterion=nn.CrossEntropyLoss(),
-                 metric=Accuracy(ignore_index=-100),
+                 metric=ClassificationError(ignore_index=-100),
                  num_workers=0)
 
 
