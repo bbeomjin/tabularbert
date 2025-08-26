@@ -17,7 +17,7 @@ from .bert import BERT, Classifier, Regressor
 from .mlp import MLP
 from ..utils.type import ArrayLike
 from ..utils.utils import DualLogger, CheckPoint, make_save_dir
-from ..utils.data import QuantileDiscretize, SSLDataset, FinetuneDataset
+from ..utils.data import QuantileDiscretize, UniformDiscretize, SSLDataset, FinetuneDataset
 from ..utils.criterion import TabularMSE, TabularWasserstein
 from ..utils.regularizer import L2Penalty, SquaredL2Penalty
 # from ..utils.scheduler import WarmupCosineLR
@@ -245,7 +245,11 @@ class TabularBERTTrainer(nn.Module):
         
         # Initialize discretizer and process data
         if x is not None:
-            self.discretizer = QuantileDiscretize(
+            # self.discretizer = QuantileDiscretize(
+            #     num_bins=num_bins, 
+            #     encoding_info=encoding_info
+            # )
+            self.discretizer = UniformDiscretize(
                 num_bins=num_bins, 
                 encoding_info=encoding_info
             )
@@ -500,9 +504,9 @@ class TabularBERTTrainer(nn.Module):
               batch_size: int=256,
               penalty: str='L2',
               lamb: float=0.5,
-              mask_token_prob: float=0.1,
-              random_token_prob: float=0.1,
-              unchanged_token_prob: float=0.1,
+              mask_token_id: int=0,
+              mask_token_prob: float=0.15,
+              mask_type: str='random',
               ignore_index: int=-100,
               num_workers: int=0,
               ) -> None:
@@ -514,9 +518,9 @@ class TabularBERTTrainer(nn.Module):
             batch_size (int): Batch size for training. Default: 256
             penalty (str): Penalty type for embedding regularization ('L2' or 'SquaredL2'). Default: 'L2'
             lamb (float): Regularization parameter. Default: 0.5
-            mask_token_prob (float): Probability of replacing tokens with [MASK]. Default: 0.1
-            random_token_prob (float): Probability of replacing tokens with random values. Default: 0.1
-            unchanged_token_prob (float): Probability of keeping original tokens unchanged. Default: 0.1
+            mask_token_id (int): Token ID used for masking when mask_type is 'constant'. Default: 0
+            mask_token_prob (float): Probability of replacing tokens with [MASK]. Default: 0.15
+            mask_type (str): Type of masking, 'random' or 'constant'. Default: 'random'
             ignore_index (int): Index to ignore in loss calculation. Default: -100
             num_workers (int): Number of subprocesses to use for data loading. Default: 0
         """
@@ -528,9 +532,9 @@ class TabularBERTTrainer(nn.Module):
                 'penalty': penalty,
                 'regularization_lambda': lamb,
                 'masking': {
+                    'mask_token_id': mask_token_id,
                     'mask_token_prob': mask_token_prob,
-                    'random_token_prob': random_token_prob,
-                    'unchanged_token_prob': unchanged_token_prob
+                    'mask_type': mask_type
                 },
                 'ignore_index': ignore_index,
                 'num_workers': num_workers
@@ -538,19 +542,13 @@ class TabularBERTTrainer(nn.Module):
             # Save updated configuration before training starts
             self._save_config()
         
-        # scaler = QuantileTransformer(n_quantiles=10000,
-        #                              output_distribution='uniform',
-        #                              subsample=None)
-        # scaler.fit(self.x)
-        # transformed_x = scaler.transform(self.x)
-        
         train_dataset = SSLDataset(
             x = self.x,
             bin_ids=self.bin_ids,
             encoding_info=self.discretizer.encoding_info,
+            mask_token_id=mask_token_id,
             mask_token_prob=mask_token_prob,
-            random_token_prob=random_token_prob,
-            unchanged_token_prob=unchanged_token_prob,
+            mask_type=mask_type,
             ignore_index=ignore_index
         )
         trainloader = DataLoader(train_dataset, 
@@ -565,9 +563,9 @@ class TabularBERTTrainer(nn.Module):
                 x = self.valid_x,
                 bin_ids=self.valid_bin_ids,
                 encoding_info=self.discretizer.encoding_info,
+                mask_token_id=mask_token_id,
                 mask_token_prob=mask_token_prob,
-                random_token_prob=random_token_prob,
-                unchanged_token_prob=unchanged_token_prob,
+                mask_type=mask_type,
                 ignore_index=ignore_index
             )
 
@@ -868,7 +866,11 @@ class TabularBERTTrainer(nn.Module):
                 raise ValueError("x is not provided.")
             bin_ids = self.bin_ids
         else:
-            discretizer = QuantileDiscretize(
+            # discretizer = QuantileDiscretize(
+            #     num_bins=num_bins, 
+            #     encoding_info=encoding_info
+            # )
+            discretizer = UniformDiscretize(
                 num_bins=num_bins, 
                 encoding_info=encoding_info
             )

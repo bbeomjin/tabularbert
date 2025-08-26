@@ -144,10 +144,9 @@ class SSLDataset(Dataset):
         x (ArrayLike): Original tabular data
         bin_ids (ArrayLike): Discretized tabular data as bin indices
         encoding_info (Dict[str, int]): Mapping of feature names to number of bins
-        mask_token_id (int): Token ID used for masking. Default: 0
+        mask_token_id (int): Token ID used for masking when mask_type is 'constant'. Default: 0
         mask_token_prob (float): Probability of masking tokens. Default: 0.15
-        random_token_prob (float): Probability of random token replacement. Default: 0.1
-        unchanged_token_prob (float): Probability of keeping tokens unchanged. Default: 0.1
+        mask_type (str): Type of masking, 'random' or 'constant'. Default: 'random'
         ignore_index (int): Index to ignore in loss calculation. Default: -100
     
     Returns:
@@ -162,8 +161,7 @@ class SSLDataset(Dataset):
                  encoding_info: Dict[str, int],
                  mask_token_id: int=0,
                  mask_token_prob: float=0.15,
-                 random_token_prob: float=0.1,
-                 unchanged_token_prob: float=0.1,
+                 mask_type: str='random',
                  ignore_index: int=-100
                  ) -> None:
         
@@ -182,8 +180,7 @@ class SSLDataset(Dataset):
         self.encoding_info = encoding_info
         self.mask_token_id = mask_token_id
         self.mask_token_prob = mask_token_prob
-        self.random_token_prob = random_token_prob
-        self.unchanged_token_prob = unchanged_token_prob
+        self.mask_type = mask_type
         self.ignore_index = ignore_index
         
         # Create the number of bins tensor for each feature
@@ -209,25 +206,17 @@ class SSLDataset(Dataset):
         probs = torch.rand(tokens.shape)
         
         # Determine which tokens to process (mask_token_prob of all tokens)
-        mask_candidates = probs < self.mask_token_prob
+        mask_ids = probs < self.mask_token_prob
         
-        # Within mask candidates, determine the specific action:
-        # - random_token_prob: replace with random token
-        # - unchanged_token_prob: keep original token
-        # - remaining: replace with [MASK] token
-        
-        random_mask = probs < self.mask_token_prob * self.random_token_prob
-        unchanged_mask = (probs > (self.mask_token_prob - self.mask_token_prob * self.unchanged_token_prob)) & mask_candidates
-        mask_token_mask = mask_candidates & ~(random_mask | unchanged_mask)
-        
-        # Apply random token replacement
-        masked_tokens[random_mask] = (torch.rand(len(tokens)) * self.num_bins + 1).type(masked_tokens.dtype)[random_mask]
-        
-        # Apply mask token
-        masked_tokens[mask_token_mask] = self.mask_token_id
+        if self.mask_type == 'random':
+            # Apply random token replacement
+            masked_tokens[mask_ids] = (torch.rand(len(tokens)) * (self.num_bins + 1)).floor().type(masked_tokens.dtype)[mask_ids]
+        else:
+            # Apply mask token replacement
+            masked_tokens[mask_ids] = self.mask_token_id
         
         # Set labels for non-masked tokens to ignore_index
-        labels[~mask_candidates] = self.ignore_index
+        labels[~mask_ids] = self.ignore_index
         
         return masked_tokens, labels
         
