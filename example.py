@@ -18,6 +18,7 @@ y = data.iloc[:, -1].values
 y = pd.Categorical(y).codes.astype(int)
 
 train_X, test_X, train_labels, test_labels = train_test_split(X, y, train_size = 0.8, random_state = 0)
+train_X, valid_X, train_labels, valid_labels = train_test_split(train_X, train_labels, train_size=0.8, random_state=0)
 
 # Preprocessing
 scaler = QuantileTransformer(n_quantiles=10000,
@@ -39,13 +40,11 @@ trainer.set_bert(embedding_dim=1024,
                  n_layers=3,
                  n_heads=8)
 trainer.pretrain(lamb=0.5,
-                 mask_token_prob=1,
-                 random_token_prob=0.2,
-                 unchanged_token_prob=0.79,
+                 mask_token_prob=0.15,
+                 mask_type='random',
                  num_workers=0)
 
 # Finetuning
-train_X, valid_X, train_labels, valid_labels = train_test_split(train_X, train_labels, train_size=0.8, random_state=0)
 # If a pretrained model is available, load it
 # trainer = TabularBERTTrainer.from_pretrained(save_path = './pretraining/version0/model_checkpoint.pt',
 #                                              device = torch.device('cuda:0'))
