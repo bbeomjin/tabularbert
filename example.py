@@ -26,6 +26,8 @@ scaler = QuantileTransformer(n_quantiles=10000,
                              subsample=None)
 scaler.fit(train_X)
 train_XX = scaler.transform(train_X)
+valid_XX = scaler.transform(valid_X)
+test_XX = scaler.transform(test_X)
 
 # Pretraining
 trainer = TabularBERTTrainer(x=train_XX,
@@ -52,9 +54,9 @@ trainer.setup_directories_and_logging(save_dir='./fine-tuning',
                                       phase='fine-tuning',
                                       project_name='GE data fine-tuning',
                                       use_wandb=False)
-trainer.finetune(x=train_X,
+trainer.finetune(x=train_XX,
                  y=train_labels,
-                 valid_x=valid_X,
+                 valid_x=valid_XX,
                  valid_y=valid_labels,
                  epochs=1000,
                  batch_size=256,

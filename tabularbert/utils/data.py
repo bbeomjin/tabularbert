@@ -144,9 +144,10 @@ class SSLDataset(Dataset):
         x (ArrayLike): Original tabular data
         bin_ids (ArrayLike): Discretized tabular data as bin indices
         encoding_info (Dict[str, int]): Mapping of feature names to number of bins
+        mask_type (str): Type of masking, 'random' or 'constant'. Default: 'random'
         mask_token_id (int): Token ID used for masking when mask_type is 'constant'. Default: 0
         mask_token_prob (float): Probability of masking tokens. Default: 0.15
-        mask_type (str): Type of masking, 'random' or 'constant'. Default: 'random'
+        unchanged_token_prob (float): Probability of keeping tokens unchanged. Default: 0.1
         ignore_index (int): Index to ignore in loss calculation. Default: -100
     
     Returns:
@@ -159,9 +160,10 @@ class SSLDataset(Dataset):
                  x: ArrayLike,
                  bin_ids: ArrayLike,
                  encoding_info: Dict[str, int],
+                 mask_type: str='random',
                  mask_token_id: int=0,
                  mask_token_prob: float=0.15,
-                 mask_type: str='random',
+                 unchanged_token_prob: float=0.1,
                  ignore_index: int=-100
                  ) -> None:
         
@@ -178,9 +180,10 @@ class SSLDataset(Dataset):
         self.x = x
         self.bin_ids = bin_ids
         self.encoding_info = encoding_info
+        self.mask_type = mask_type
         self.mask_token_id = mask_token_id
         self.mask_token_prob = mask_token_prob
-        self.mask_type = mask_type
+        self.unchanged_token_prob = unchanged_token_prob
         self.ignore_index = ignore_index
         
         # Create the number of bins tensor for each feature
@@ -206,17 +209,21 @@ class SSLDataset(Dataset):
         probs = torch.rand(tokens.shape)
         
         # Determine which tokens to process (mask_token_prob of all tokens)
-        mask_ids = probs < self.mask_token_prob
+        mask_candidates = probs < self.mask_token_prob
+        
+        # Within mask candidates, determine which tokens to mask (unchanged_token_prob of mask candidates)
+        unchanged_mask = probs < (self.mask_token_prob * self.unchanged_token_prob)
+        mask = mask_candidates & ~unchanged_mask
         
         if self.mask_type == 'random':
             # Apply random token replacement
-            masked_tokens[mask_ids] = (torch.rand(len(tokens)) * (self.num_bins + 1)).floor().type(masked_tokens.dtype)[mask_ids]
+            masked_tokens[mask] = (torch.rand(len(tokens)) * (self.num_bins + 1)).floor().type(masked_tokens.dtype)[mask]
         else:
             # Apply mask token replacement
-            masked_tokens[mask_ids] = self.mask_token_id
+            masked_tokens[mask] = self.mask_token_id
         
         # Set labels for non-masked tokens to ignore_index
-        labels[~mask_ids] = self.ignore_index
+        labels[~mask_candidates] = self.ignore_index
         
         return masked_tokens, labels
         
@@ -231,14 +238,14 @@ class SSLDataset(Dataset):
             Tuple[torch.Tensor, torch.Tensor]: (masked_tokens, labels)
         """
         # Get tokens for this sample
-        tabular_x = torch.tensor(self.x[idx], dtype=torch.float)
+        y = torch.tensor(self.x[idx], dtype=torch.float)
         tokens = torch.tensor(self.bin_ids[idx], dtype=torch.long)
         
         # Apply masking strategy
         masked_tokens, labels = self._apply_masking(tokens)
-        tabular_x[labels == self.ignore_index] = torch.nan
+        y[labels == self.ignore_index] = torch.nan
         
-        return masked_tokens, labels, tabular_x
+        return masked_tokens, labels, y
     
     def __len__(self) -> int:
         """
@@ -280,8 +287,8 @@ if __name__ == '__main__':
     dataset = SSLDataset(x = x,
                      bin_ids = bin_ids,
                      encoding_info = discretizer.encoding_info,
-                     mask_token_prob = 0.30,
-                     random_token_prob = 0.1,
-                     unchanged_token_prob = 0.1,
+                     mask_type = 'random',
+                     mask_token_prob = 1.0,
+                     unchanged_token_prob = 0.3,
                      ignore_index = -100)
     print(dataset[0])
