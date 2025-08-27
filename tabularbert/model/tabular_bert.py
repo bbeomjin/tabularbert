@@ -506,7 +506,8 @@ class TabularBERTTrainer(nn.Module):
               lamb: float=0.5,
               mask_token_id: int=0,
               mask_token_prob: float=0.15,
-              mask_type: str='random',
+              random_token_prob: float=0.1,
+              unchanged_token_prob: float=0.1,
               ignore_index: int=-100,
               num_workers: int=0,
               ) -> None:
@@ -518,9 +519,10 @@ class TabularBERTTrainer(nn.Module):
             batch_size (int): Batch size for training. Default: 256
             penalty (str): Penalty type for embedding regularization ('L2' or 'SquaredL2'). Default: 'L2'
             lamb (float): Regularization parameter. Default: 0.5
-            mask_token_id (int): Token ID used for masking when mask_type is 'constant'. Default: 0
+            mask_token_id (int): Token ID used for masking. Default: 0
             mask_token_prob (float): Probability of replacing tokens with [MASK]. Default: 0.15
-            mask_type (str): Type of masking, 'random' or 'constant'. Default: 'random'
+            random_token_prob (float): Probability of replacing tokens with random values. Default: 0.1
+            unchanged_token_prob (float): Probability of keeping original tokens unchanged. Default: 0.1
             ignore_index (int): Index to ignore in loss calculation. Default: -100
             num_workers (int): Number of subprocesses to use for data loading. Default: 0
         """
@@ -534,7 +536,8 @@ class TabularBERTTrainer(nn.Module):
                 'masking': {
                     'mask_token_id': mask_token_id,
                     'mask_token_prob': mask_token_prob,
-                    'mask_type': mask_type
+                    'random_token_prob': random_token_prob,
+                    'unchanged_token_prob': unchanged_token_prob
                 },
                 'ignore_index': ignore_index,
                 'num_workers': num_workers
@@ -548,7 +551,8 @@ class TabularBERTTrainer(nn.Module):
             encoding_info=self.discretizer.encoding_info,
             mask_token_id=mask_token_id,
             mask_token_prob=mask_token_prob,
-            mask_type=mask_type,
+            random_token_prob=random_token_prob,
+            unchanged_token_prob=unchanged_token_prob,
             ignore_index=ignore_index
         )
         trainloader = DataLoader(train_dataset, 
@@ -565,7 +569,8 @@ class TabularBERTTrainer(nn.Module):
                 encoding_info=self.discretizer.encoding_info,
                 mask_token_id=mask_token_id,
                 mask_token_prob=mask_token_prob,
-                mask_type=mask_type,
+                random_token_prob=random_token_prob,
+                unchanged_token_prob=unchanged_token_prob,
                 ignore_index=ignore_index
             )
 
