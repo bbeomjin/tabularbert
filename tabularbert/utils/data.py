@@ -6,9 +6,54 @@ from torch.utils.data import Dataset
 from .type import ArrayLike
 
 
+def get_n_categories(x: ArrayLike) -> Dict[str, int]:
+    if isinstance(x, pd.DataFrame):
+        columns = list(x.columns)
+        n_categories = list(x.apply(lambda x: len(x.unique())))
+        return {k: v for k, v in zip(columns, n_categories)}
+    else:
+        columns = [j for j in range(x.shape[1])]
+        n_categories = [len(np.unique(x[:, j])) for j in range(x.shape[1])]
+        return {k: v for k, v in zip(columns, n_categories)}
+
+
+
+def divide_numerical_and_categorical(
+            x: ArrayLike,
+            encoding_info: Dict[str, int|str]
+            ) -> Dict[str, Dict[str, ArrayLike]]:
+    
+    if isinstance(x, pd.DataFrame):
+        columns = list(x.columns)
+    else:
+        columns = list(range(x.shape[1]))
+    
+    num_encoding_info = {k: v for k, v in encoding_info.items() if v != 'category'}
+    cat_encoding_info = {k: v for k, v in encoding_info.items() if v == 'category'}
+        
+    cat_vars = list(cat_encoding_info.keys())
+    num_vars = [k for k in columns if k not in cat_vars]
+    
+    if isinstance(x, pd.DataFrame):
+        x_cat = x[cat_vars].copy()
+        x_num = x[num_vars].copy()
+    else:
+        x_num = x[:, num_vars]
+        x_cat = x[:, cat_vars]
+        
+        if np.issubdtype(x_num.dtype, np.number) is not True:
+            x_num = x_num.astype(np.float64)
+    
+    return {"numerical": {"x": x_num,
+                         "encoding_info": num_encoding_info}, 
+            "categorical": {"x": x_cat,
+                            "encoding_info": cat_encoding_info}}    
+
+
+
 class DiscretizeBase:
     """
-    Base class for the discretization classes, ['QunatileDiscretize'].
+    Base class for the discretization classes, ['QunatileDiscretize', 'UniformDiscretize'].
     """
     
     def __init__(self, 
@@ -38,7 +83,7 @@ class DiscretizeBase:
         else:
             self.columns = [j for j in range(x.shape[1])]
         
-        # Set the default number of bins and subbins
+        # Set the default number of bins
         encoding_info = {k: self.num_bins for k in self.columns}
         
         if self.encoding_info is not None:
@@ -54,26 +99,37 @@ class DiscretizeBase:
         
         # Getting cut-off values for binning
         bins = {}
-        for j, k in enumerate(encoding_info.keys()):
-            bins[k] = self._fit(x[:, j], num_bins = encoding_info[k])
+        for j, (k, v) in enumerate(encoding_info.items()):
+            if isinstance(v, int) or isinstance(v, float):
+                xx = x[:, j]
+                if np.issubdtype(xx.dtype, np.number) is not True:
+                    xx = xx.astype(np.float64)
+                bins[k] = self._fit(xx, num_bins=v)
+            else:
+                bins[k] = None        
         
         self.bins = bins
         
     def _discretize(self, 
                     x: ArrayLike,
                     bins: List[float] | ArrayLike,
-                    ) -> Tuple[ArrayLike, ArrayLike]:
+                    ) -> ArrayLike:
 
         ids = np.digitize(x, bins = bins, right = False)
         # Bin index starts with 1
         return ids.astype(int) + 1
-       
+    
+    def _cat2int(self,
+                 x: ArrayLike
+                 ) -> ArrayLike:
+        codes = {k: v + 1 for v, k in enumerate(set(x))}
+        return np.array([codes[k] for k in x])
+    
     def discretize(self, 
                    x: ArrayLike):
         
         if isinstance(x, pd.DataFrame):
             x = x.values
-        
         
         if len(self.encoding_info) != x.shape[1]:
             raise ValueError(
@@ -81,9 +137,16 @@ class DiscretizeBase:
             )
         
         bin_ids_list = list()
-        for j, k in enumerate(self.encoding_info.keys()):
-            bin_ids = self._discretize(x = x[:, j], 
-                                       bins = self.bins[k])
+        for j, (k, v) in enumerate(self.encoding_info.items()):
+            if isinstance(v, int) or isinstance(v, float):
+                xx = x[:, j]
+                if np.issubdtype(xx.dtype, np.number) is not True:
+                    xx = xx.astype(np.float64)
+                bin_ids = self._discretize(x=xx, 
+                                           bins=self.bins[k])
+            else:
+                bin_ids = self._cat2int(x=x[:, j])
+                
             bin_ids_list.append(bin_ids)
 
         return np.stack(bin_ids_list, axis = 1)
@@ -128,8 +191,8 @@ class UniformDiscretize(DiscretizeBase):
              ) -> ArrayLike:
         bins = np.linspace(np.min(x), np.max(x), num_bins + 1)
         bins[-1] = np.inf
-        return bins[1:]
-    
+        return bins[1:]    
+
     
     
 class SSLDataset(Dataset):
@@ -285,14 +348,14 @@ class FinetuneDataset(Dataset):
 
 if __name__ == '__main__':
     x = np.random.rand(20, 10)
-    discretizer = QuantileDiscretize(num_bins = 100, encoding_info = {0: 10})
+    discretizer = QuantileDiscretize(num_bins=100, encoding_info={0: 10})
     discretizer.fit(x)
     bin_ids = discretizer.discretize(x)
-    dataset = SSLDataset(x = x,
-                     bin_ids = bin_ids,
-                     encoding_info = discretizer.encoding_info,
-                     mask_token_prob = 1.0,
-                     random_token_prob = 0.3,
-                     unchanged_token_prob = 0.3,
-                     ignore_index = -100)
+    dataset = SSLDataset(x=x,
+                     bin_ids=bin_ids,
+                     encoding_info=discretizer.encoding_info,
+                     mask_token_prob=1.0,
+                     random_token_prob=0.3,
+                     unchanged_token_prob=0.3,
+                     ignore_index=-100)
     print(dataset[0])
