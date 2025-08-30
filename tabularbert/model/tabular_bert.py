@@ -17,7 +17,15 @@ from .bert import BERT, Classifier, Regressor
 from .mlp import MLP
 from ..utils.type import ArrayLike
 from ..utils.utils import DualLogger, CheckPoint, make_save_dir
-from ..utils.data import QuantileDiscretize, UniformDiscretize, SSLDataset, FinetuneDataset
+from ..utils.data import (
+    QuantileDiscretize, 
+    UniformDiscretize, 
+    get_n_categories,
+    str2category,
+    divide_numerical_and_categorical,
+    SSLDataset, 
+    FinetuneDataset
+)
 from ..utils.criterion import TabularMSE, TabularWasserstein
 from ..utils.regularizer import L2Penalty, SquaredL2Penalty
 # from ..utils.scheduler import WarmupCosineLR
