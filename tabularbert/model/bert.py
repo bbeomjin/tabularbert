@@ -78,10 +78,10 @@ class Classifier(nn.Module):
         encoding_info (Dict[str, int]): Dictionary of binning information
                                        e.g., {'var1': 10, 'var2': 5} for 10 and 5 classes respectively
     """
-
+    
     def __init__(self, 
                  embedding_dim: int, 
-                 encoding_info: Dict[str, int]) -> None:
+                 encoding_info: Dict[str, Dict[str, int]]) -> None:
         super(Classifier, self).__init__()
         
         self.embedding_dim = embedding_dim
@@ -89,8 +89,8 @@ class Classifier(nn.Module):
         
         # Create linear layers for each task
         self.fc = nn.ModuleList([
-            nn.Linear(embedding_dim, num_classes) 
-            for num_classes in encoding_info.values()
+            nn.Linear(embedding_dim, v.get('num_bins', v.get('num_categories'))) 
+            for _, v in encoding_info.items()
         ])
         
     def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
@@ -137,7 +137,7 @@ class Regressor(nn.Module):
     
     def __init__(self,
                  embedding_dim: int,
-                 encoding_info: Dict[str, int]) -> None:
+                 encoding_info: Dict[str, Dict[str, int]]) -> None:
         super(Regressor, self).__init__()
         
         self.embedding_dim = embedding_dim
@@ -146,7 +146,7 @@ class Regressor(nn.Module):
         # Create linear layers for each regression task (each outputs 1 value)
         self.fc = nn.ModuleList([
             nn.Linear(embedding_dim, 1) 
-            for _ in range(len(encoding_info))
+            if 'num_bins' in v.keys() else None for k, v in encoding_info.items()
         ])
     
     def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
@@ -167,9 +167,12 @@ class Regressor(nn.Module):
         
         outputs = []
         # Process each position (excluding CLS token at position 0)
-        for j in range(len(self.encoding_info)):
-            # Apply corresponding linear layer to position j
-            prediction = self.fc[j](x[:, j]).flatten()
-            outputs.append(prediction)
+        for j, (k, v) in enumerate(self.encoding_info.items()):
+            if 'num_bins' in v.keys():
+                # Apply corresponding linear layer to position j
+                prediction = self.fc[j](x[:, j]).flatten()
+                outputs.append(prediction)
+            else:
+                outputs.append(None)
             
         return outputs

@@ -42,8 +42,9 @@ trainer.set_bert(embedding_dim=1024,
                  n_layers=3,
                  n_heads=8)
 trainer.pretrain(lamb=0.5,
-                 mask_token_prob=0.15,
-                 mask_type='random',
+                 mask_token_prob=0.2,
+                 random_token_prob=0.15,
+                 unchanged_token_prob=0.15,
                  num_workers=0)
 
 # Finetuning

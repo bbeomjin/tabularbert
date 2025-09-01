@@ -12,7 +12,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 import pandas as pd
 import numpy as np
 
-from .embedding import NumEmbedding
+from .embedding import NumEmbedding, CatEmbedding
 from .bert import BERT, Classifier, Regressor
 from .mlp import MLP
 from ..utils.type import ArrayLike
@@ -20,13 +20,10 @@ from ..utils.utils import DualLogger, CheckPoint, make_save_dir
 from ..utils.data import (
     QuantileDiscretize, 
     UniformDiscretize, 
-    get_n_categories,
-    str2category,
-    divide_numerical_and_categorical,
     SSLDataset, 
     FinetuneDataset
 )
-from ..utils.criterion import TabularMSE, TabularWasserstein
+from ..utils.criterion import TabularMSE, TabularWasserstein, TabularCrossEntropy
 from ..utils.regularizer import L2Penalty, SquaredL2Penalty
 # from ..utils.scheduler import WarmupCosineLR
 
@@ -53,34 +50,28 @@ class TabularBERT(nn.Module):
     Args:
         encoding_info (Dict[str, Dict[str, int]]): Nested dictionary containing encoding
                                                    information for each variable/column
-        max_len (int): Maximum number of bins across all variables
-        max_position (int): Maximum number of variables/columns in the dataset
         embedding_dim (int): Dimension of embedding vectors. Default: 256
         n_layers (int): Number of transformer encoder layers. Default: 4
         n_heads (int): Number of attention heads. Default: 8
         dropout (float): Dropout probability for regularization. Default: 0.1
     
     Example:
-        >>> encoding_info = {'var1': 10, 'var2': 5}
-        >>> model = TabularBERT(encoding_info, max_len=10, max_position=2)
+        >>> encoding_info = {'var1': {'num_bins': 10}, 'var2': {'num_categories': 5}}
+        >>> model = TabularBERT(encoding_info)
         >>> bin_ids = torch.randint(1, 11, (32, 2))  # batch_size=32, 2 variables
         >>> reg_outputs, cls_outputs = model(bin_ids)
     """
     
     def __init__(self,
-                 encoding_info: Dict[str, int],
-                 max_len: int,
-                 max_position: int,
+                 encoding_info: Dict[str, Dict[str, int]],
                  embedding_dim: int=1024,
                  n_layers: int=3,
                  n_heads: int=8,
-                 dropout: float=0.3) -> None:
+                 dropout: float=0.1) -> None:
         super(TabularBERT, self).__init__()
         
         # Store configuration
         self.encoding_info = encoding_info
-        self.max_len = max_len
-        self.max_position = max_position
         self.embedding_dim = embedding_dim
         self.n_layers = n_layers
         self.n_heads = n_heads
@@ -91,13 +82,38 @@ class TabularBERT(nn.Module):
             raise ValueError(f"embedding_dim ({embedding_dim}) must be divisible by n_heads ({n_heads})")
         
         # Initialize model components
-        self.embedding = NumEmbedding(
-            max_len=max_len,
-            max_position=max_position,
-            embedding_dim=embedding_dim,
-            mask_idx=0
-        )
+        num_encoding_info = {i: v['num_bins'] for i, (_, v) in enumerate(encoding_info.items()) if 'num_bins' in v.keys()}
+        self.num_var_ids = list(num_encoding_info.keys())
+        if len(self.num_var_ids) > 0:
+            self.num_embedding = NumEmbedding(
+                max_len=max(num_encoding_info.values()),
+                max_position=len(self.num_var_ids),
+                embedding_dim=embedding_dim,
+                mask_idx=0
+            )
+        else:
+            self.num_embedding = None
+
+        cat_encoding_info = {i: v['num_categories'] for i, (_, v) in enumerate(encoding_info.items()) if 'num_categories' in v.keys()}
+        self.cat_var_ids = list(cat_encoding_info.keys())
+        if len(self.cat_var_ids) > 0:
+            self.cat_embedding = CatEmbedding(
+                max_len=max(cat_encoding_info.values()),
+                max_position=len(self.cat_var_ids),
+                embedding_dim=embedding_dim,
+                mask_idx=0
+            )
+        else:
+            self.cat_embedding = None
+            
+        self.register_buffer('sorting_key', torch.argsort(torch.tensor(self.num_var_ids + self.cat_var_ids)))
         
+        self.cls_embedding = nn.Embedding(1, embedding_dim)
+        # Pre-register [CLS] token as a buffer for efficiency
+        # This avoids creating the tensor in every forward pass
+        self.register_buffer('cls_token', torch.zeros(1, 1, dtype=torch.long))
+        
+        # Initialize BERT encoder
         self.bert = BERT(
             embedding_dim=embedding_dim,
             n_layers=n_layers,
@@ -105,6 +121,7 @@ class TabularBERT(nn.Module):
             dropout=dropout
         )
         
+        # Initialize prediction heads
         self.classifier = Classifier(embedding_dim=embedding_dim,
                                      encoding_info=encoding_info)
         self.regressor = Regressor(embedding_dim=embedding_dim,
@@ -123,11 +140,8 @@ class TabularBERT(nn.Module):
                 - reg_outputs: List of regression outputs (one tensor per variable)
                 - cls_outputs: List of classification outputs (one tensor per variable)
         """
-        # Embedding layer: bin_ids -> embeddings with positional information
-        embeddings = self.embedding(bin_ids)
         
-        # BERT encoder: learn contextual representations
-        contextualized_embeddings = self.bert(embeddings)
+        contextualized_embeddings = self.get_embeddings(bin_ids)
         
         # Prediction heads: generate task-specific outputs
         cls_outputs = self.classifier(contextualized_embeddings[:, 1:])
@@ -147,8 +161,24 @@ class TabularBERT(nn.Module):
         Returns:
             torch.Tensor: Contextualized embeddings of shape (batch_size, seq_len, embedding_dim)
         """
-        embeddings = self.embedding(bin_ids)
-        return self.bert(embeddings)
+        batch_size = bin_ids.size(0)
+        
+        # Efficiently create CLS tokens for the batch
+        cls_token = self.cls_token.expand(batch_size, -1)
+        cls_embedded = self.cls_embedding(cls_token)
+         
+        # Embedding layer: bin_ids -> embeddings with positional information
+        num_embedded = self.num_embedding(bin_ids[:, self.num_var_ids]) if len(self.num_var_ids) > 0 else None
+        cat_embedded = self.cat_embedding(bin_ids[:, self.cat_var_ids]) if len(self.cat_var_ids) > 0 else None
+        embedded = [num_embedded, cat_embedded]
+        embeddings = torch.cat([e for e in embedded if e is not None], dim=1)[:, self.sorting_key]
+        
+        # Prepend CLS token
+        embeddings = torch.cat([cls_embedded, embeddings], dim=1)
+        
+        # BERT encoder: learn contextual representations
+        contextualized_embeddings = self.bert(embeddings)
+        return contextualized_embeddings
     
     
 
@@ -156,13 +186,11 @@ class DownstreamModel(nn.Module):
     def __init__(self, pretrained_model: TabularBERT, head: MLP):
         super(DownstreamModel, self).__init__()
         self.encoding_info = pretrained_model.encoding_info
-        self.embedding = pretrained_model.embedding
-        self.bert = pretrained_model.bert
+        self.pretrained_model = pretrained_model
         self.head = head
     
     def forward(self, bin_ids: torch.Tensor) -> torch.Tensor:
-        embeddings = self.embedding(bin_ids)
-        contextualized_embeddings = self.bert(embeddings)
+        contextualized_embeddings = self.pretrained_model.get_embeddings(bin_ids)
         outputs = self.head(contextualized_embeddings[:, 0])
         return outputs
 
@@ -207,7 +235,7 @@ class TabularBERTTrainer(nn.Module):
         >>> 
         >>> # Prepare data
         >>> x_train = np.random.randn(1000, 5)  # 1000 samples, 5 features
-        >>> encoding_info = {'var1': 20, 'var5': 35}
+        >>> encoding_info = {'var1': {'num_bins': 20}, 'var5': 'categorical'}
         >>> 
         >>> # Initialize trainer
         >>> trainer = TabularBERTTrainer(
@@ -230,7 +258,7 @@ class TabularBERTTrainer(nn.Module):
         x: ArrayLike=None,
         y: ArrayLike=None,
         num_bins: int=50,
-        encoding_info: Dict[str, int]=None,
+        encoding_info: Dict[str, str|int]=None,
         valid_x: ArrayLike=None,
         valid_y: ArrayLike=None,
         device: torch.device=torch.device('cpu')
@@ -390,8 +418,6 @@ class TabularBERTTrainer(nn.Module):
             n_heads (int): Number of attention heads. Default: 8
             dropout (float): Dropout probability for regularization. Default: 0.1
         """
-        max_len = max([v for v in self.discretizer.encoding_info.values()])
-        max_position = len(self.discretizer.encoding_info)
         
         # Update model configuration
         if self.save:
@@ -401,16 +427,12 @@ class TabularBERTTrainer(nn.Module):
                 'n_layers': n_layers,
                 'n_heads': n_heads,
                 'dropout': dropout,
-                'max_len': max_len,
-                'max_position': max_position,
                 'total_parameters': None  # Will be updated after model creation
             }
         
         # Create model
         self.model = TabularBERT(
             encoding_info=self.discretizer.encoding_info,
-            max_len=max_len,
-            max_position=max_position,
             embedding_dim=embedding_dim,
             n_layers=n_layers,
             n_heads=n_heads,
@@ -474,7 +496,7 @@ class TabularBERTTrainer(nn.Module):
             self._save_config()
         
     def set_optimizer(self,
-                      lr: float=1e-4,
+                      lr: float=2e-4,
                       weight_decay: float=1e-3,
                       betas: Tuple[float, float]=(0.9, 0.999)
                       ) -> None:
@@ -510,12 +532,12 @@ class TabularBERTTrainer(nn.Module):
     def pretrain(self, 
               epochs: int=1000,
               batch_size: int=256,
-              penalty: str='L2',
+              penalty: str='squaredL2',
               lamb: float=0.5,
               mask_token_id: int=0,
-              mask_token_prob: float=0.15,
-              random_token_prob: float=0.1,
-              unchanged_token_prob: float=0.1,
+              mask_token_prob: float=0.2,
+              random_token_prob: float=0.15,
+              unchanged_token_prob: float=0.15,
               ignore_index: int=-100,
               num_workers: int=0,
               ) -> None:
@@ -525,12 +547,12 @@ class TabularBERTTrainer(nn.Module):
         Args:
             epochs (int): Number of training epochs. Default: 1000
             batch_size (int): Batch size for training. Default: 256
-            penalty (str): Penalty type for embedding regularization ('L2' or 'SquaredL2'). Default: 'L2'
+            penalty (str): Penalty type for embedding regularization ('L2' or 'squaredL2'). Default: 'squaredL2'
             lamb (float): Regularization parameter. Default: 0.5
             mask_token_id (int): Token ID used for masking. Default: 0
-            mask_token_prob (float): Probability of replacing tokens with [MASK]. Default: 0.15
-            random_token_prob (float): Probability of replacing tokens with random values. Default: 0.1
-            unchanged_token_prob (float): Probability of keeping original tokens unchanged. Default: 0.1
+            mask_token_prob (float): Probability of replacing tokens with [MASK]. Default: 0.2
+            random_token_prob (float): Probability of replacing tokens with random values. Default: 0.15
+            unchanged_token_prob (float): Probability of keeping original tokens unchanged. Default: 0.15
             ignore_index (int): Index to ignore in loss calculation. Default: -100
             num_workers (int): Number of subprocesses to use for data loading. Default: 0
         """
@@ -609,11 +631,12 @@ class TabularBERTTrainer(nn.Module):
         # Define loss functions
         mse_loss = TabularMSE(self.discretizer.encoding_info)
         wasserstein_loss = TabularWasserstein(self.discretizer.encoding_info, ignore_index=ignore_index)
+        ce_loss = TabularCrossEntropy(self.discretizer.encoding_info, ignore_index=ignore_index)
         
         # Define regularizer
         if penalty == 'L2':
             embed_penalty = L2Penalty(lamb)
-        elif penalty == 'SquaredL2':
+        elif penalty == 'squaredL2':
             embed_penalty = SquaredL2Penalty(lamb)
         self.lamb = lamb
         self.penalty = penalty
@@ -630,15 +653,15 @@ class TabularBERTTrainer(nn.Module):
                 ======================================================================\n
                 No optimizer configuration detected. Initializing with optimized defaults:\n\n
                 Optimizer: AdamW\n
-                Learning Rate: 1e-4\n
-                Weight Decay: 1e-3\n
+                Learning Rate: 2e-4\n
+                Weight Decay: 1e-2\n
                 Beta Parameters: (0.9, 0.999)\n\n
                 Tip: Use trainer.set_optimizer() to customize optimizer before training.\n
                 ======================================================================
                 """,
                 UserWarning
             )
-            self.set_optimizer(weight_decay=1e-3)
+            self.set_optimizer(weight_decay=1e-2)
             
         optimizer = self.optimizer(params=self.model.parameters())
         total_steps = epochs * len(trainloader)
@@ -657,14 +680,14 @@ class TabularBERTTrainer(nn.Module):
         for epoch in tqdm.tqdm(range(epochs), desc='Pretraining Progress'):
             # Training phase
             train_metrics = self._run_pretraining_epoch(
-                optimizer, scheduler, trainloader, mse_loss, wasserstein_loss, embed_penalty, global_step
+                optimizer, scheduler, trainloader, mse_loss, wasserstein_loss, ce_loss, embed_penalty, global_step
             )
             global_step = train_metrics['global_step']
             
             # Validation phase (if validation data available)
             if self.valid_x is not None:
                 valid_metrics = self._run_pretraining_validation_epoch(
-                    validloader, mse_loss, wasserstein_loss, embed_penalty, epoch
+                    validloader, mse_loss, wasserstein_loss, ce_loss, embed_penalty, epoch
                 )
                 
                 # Model checkpointing based on validation loss
@@ -690,7 +713,7 @@ class TabularBERTTrainer(nn.Module):
         self.save = False
         self.optimizer = None
     
-    def _run_pretraining_epoch(self, optimizer, scheduler, trainloader, mse_loss, wasserstein_loss, 
+    def _run_pretraining_epoch(self, optimizer, scheduler, trainloader, mse_loss, wasserstein_loss, ce_loss,
                                embed_penalty, epoch):
         """
         Execute one pretraining epoch with efficient batch processing.
@@ -712,12 +735,13 @@ class TabularBERTTrainer(nn.Module):
             cls_predictions, reg_predictions = self.model(bin_ids)
             
             # Compute losses
-            wasserstein_loss_val = wasserstein_loss(cls_predictions, labels)
             mse_loss_val = mse_loss(reg_predictions, tabular_x)
-            regularization_loss = embed_penalty(self.model.embedding.bin_embedding.weight)
+            wasserstein_loss_val = wasserstein_loss(cls_predictions, labels)
+            ce_loss_val = ce_loss(cls_predictions, labels)
+            regularization_loss = embed_penalty(self.model.num_embedding.bin_embedding.weight) if self.model.num_embedding is not None else 0.0
             
             # Combined loss
-            total_batch_loss = wasserstein_loss_val + mse_loss_val + regularization_loss
+            total_batch_loss = mse_loss_val + wasserstein_loss_val + ce_loss_val + regularization_loss
             
             # Backward pass and optimization
             total_batch_loss.backward()
@@ -732,6 +756,7 @@ class TabularBERTTrainer(nn.Module):
                 self.logger.log_scalar('Loss/Train/Total', total_batch_loss.item(), epoch)
                 self.logger.log_scalar('Loss/Train/Wasserstein', wasserstein_loss_val.item(), epoch)
                 self.logger.log_scalar('Loss/Train/MSE', mse_loss_val.item(), epoch)
+                self.logger.log_scalar('Loss/Train/CE', ce_loss_val.item(), epoch)
                 self.logger.log_scalar('Loss/Train/Regularization', regularization_loss.item(), epoch)
             
             epoch += 1
@@ -741,7 +766,7 @@ class TabularBERTTrainer(nn.Module):
             'global_step': epoch,
         }
     
-    def _run_pretraining_validation_epoch(self, validloader, mse_loss, wasserstein_loss, 
+    def _run_pretraining_validation_epoch(self, validloader, mse_loss, wasserstein_loss, ce_loss,
                                           embed_penalty, epoch):
         """
         Execute one pretraining validation epoch with no gradient computation.
@@ -751,8 +776,9 @@ class TabularBERTTrainer(nn.Module):
         """
         self.model.eval()
         total_loss = 0.0
-        total_wasserstein_loss = 0.0
         total_mse_loss = 0.0
+        total_wasserstein_loss = 0.0
+        total_ce_loss = 0.0
         num_batches = len(validloader)
         
         with torch.no_grad():
@@ -765,22 +791,25 @@ class TabularBERTTrainer(nn.Module):
                 cls_predictions, reg_predictions = self.model(bin_ids)
                 
                 # Compute losses
-                wasserstein_loss_val = wasserstein_loss(cls_predictions, labels)
                 mse_loss_val = mse_loss(reg_predictions, tabular_x)
-                regularization_loss = embed_penalty(self.model.embedding.bin_embedding.weight)
+                wasserstein_loss_val = wasserstein_loss(cls_predictions, labels)
+                ce_loss_val = ce_loss(cls_predictions, labels)
+                regularization_loss = embed_penalty(self.model.num_embedding.bin_embedding.weight) if self.model.num_embedding is not None else 0.0
                 
                 # Combined loss
-                total_batch_loss = wasserstein_loss_val + mse_loss_val + regularization_loss
+                total_batch_loss = mse_loss_val + wasserstein_loss_val + ce_loss_val + regularization_loss
                 total_loss += total_batch_loss.item()
                 total_wasserstein_loss += wasserstein_loss_val.item()
                 total_mse_loss += mse_loss_val.item()
+                total_ce_loss += ce_loss_val.item()
                 
                 # Log validation metrics
                 if self.save:
                     self.logger.log_scalar('Loss/Valid/AvgTotal', total_loss / num_batches, epoch)
-                    self.logger.log_scalar('Loss/Valid/AvgWasserstein', total_wasserstein_loss / num_batches, epoch)
                     self.logger.log_scalar('Loss/Valid/AvgMSE', total_mse_loss / num_batches, epoch)
-        
+                    self.logger.log_scalar('Loss/Valid/AvgWasserstein', total_wasserstein_loss / num_batches, epoch)
+                    self.logger.log_scalar('Loss/Valid/AvgCE', total_ce_loss / num_batches, epoch)
+                    
         return {
             'avg_total_loss': total_loss / num_batches,
         }
@@ -848,7 +877,7 @@ class TabularBERTTrainer(nn.Module):
                  valid_x: ArrayLike=None,
                  valid_y: ArrayLike=None,
                  num_bins: int=None,
-                 encoding_info: Dict[str, int]=None,
+                 encoding_info: Dict[str, Dict[str, int]]=None,
                  task_type: str=None,
                  num_classes: int=None,
                  epochs: int=1000,
@@ -1002,7 +1031,7 @@ class TabularBERTTrainer(nn.Module):
                 Hidden Layers: 1\n
                 Hidden Layer Dimensions: Embedding Dimension\n
                 Activation Function: ReLU\n
-                Dropout Rate: 0.3\n
+                Dropout Rate: 0.1\n
                 Batch Normalization: False\n\n
                 Tip: Use trainer.set_head() to customize head before training.\n
                 ======================================================================
@@ -1014,7 +1043,7 @@ class TabularBERTTrainer(nn.Module):
         # Define regularizer
         if penalty == 'L2':
             embed_penalty = L2Penalty(lamb)
-        elif penalty == 'SquaredL2':
+        elif penalty == 'squaredL2':
             embed_penalty = SquaredL2Penalty(lamb)
         
         # Define checkpoint
@@ -1033,7 +1062,7 @@ class TabularBERTTrainer(nn.Module):
                 ======================================================================\n
                 No optimizer configuration detected. Initializing with optimized defaults:\n\n
                 Optimizer: AdamW\n
-                Learning Rate: 1e-4\n
+                Learning Rate: 2e-4\n
                 Weight Decay: 1e-5\n
                 Beta Parameters: (0.9, 0.999)\n\n
                 Tip: Use trainer.set_optimizer() to customize optimizer before training.\n
@@ -1119,7 +1148,7 @@ class TabularBERTTrainer(nn.Module):
             
             # Compute losses
             loss_val = criterion(predictions, labels)
-            regularization_loss = embed_penalty(self.model.embedding.bin_embedding.weight)
+            regularization_loss = embed_penalty(self.model.num_embedding.bin_embedding.weight) if self.model.num_embedding is not None else 0.0
             
             # Combined loss
             total_batch_loss = loss_val + regularization_loss
@@ -1174,7 +1203,7 @@ class TabularBERTTrainer(nn.Module):
                 
                 # Compute losses
                 loss_val = criterion(predictions, labels)
-                regularization_loss = embed_penalty(self.model.embedding.bin_embedding.weight)
+                regularization_loss = embed_penalty(self.model.num_embedding.bin_embedding.weight) if self.model.num_embedding is not None else 0.0
                 
                 # Combined loss
                 total_batch_loss = loss_val + regularization_loss
