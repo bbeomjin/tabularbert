@@ -55,7 +55,7 @@ class TabularCrossEntropy(nn.Module):
         Returns:
             torch.Tensor: Average cross-entropy loss across all features
         """
-        total_loss = 0.0
+        total_loss = torch.tensor(0.0, device=targets.device, requires_grad=True)
         
         for feature_idx in self.compute_ids:
             feature_loss = self._compute_ce(predictions[feature_idx], targets[:, feature_idx])
@@ -110,7 +110,7 @@ class TabularMSE(nn.Module):
         Returns:
             torch.Tensor: Average MSE loss across all features
         """
-        total_loss = 0.0
+        total_loss = torch.tensor(0.0, device=targets.device, requires_grad=True)
         
         for feature_idx in self.compute_ids:
             feature_loss = self._compute_mse(
@@ -190,7 +190,8 @@ class TabularWasserstein(nn.Module):
         Returns:
             torch.Tensor: Average Wasserstein loss across all features
         """
-        total_loss = 0.0
+        total_loss = torch.tensor(0.0, device=targets.device, requires_grad=True)
+        
         for feature_idx in self.compute_ids:
             feature_loss = self._compute_wasserstein(
                 predictions[feature_idx], 
