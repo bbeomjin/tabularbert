@@ -183,14 +183,14 @@ class TabularBERT(nn.Module):
     
 
 class DownstreamModel(nn.Module):
-    def __init__(self, pretrained_model: TabularBERT, head: MLP):
+    def __init__(self, pretrained: TabularBERT, head: MLP):
         super(DownstreamModel, self).__init__()
-        self.encoding_info = pretrained_model.encoding_info
-        self.pretrained_model = pretrained_model
+        self.encoding_info = pretrained.encoding_info
+        self.pretrained = pretrained
         self.head = head
     
     def forward(self, bin_ids: torch.Tensor) -> torch.Tensor:
-        contextualized_embeddings = self.pretrained_model.get_embeddings(bin_ids)
+        contextualized_embeddings = self.pretrained.get_embeddings(bin_ids)
         outputs = self.head(contextualized_embeddings[:, 0])
         return outputs
 
@@ -1148,7 +1148,7 @@ class TabularBERTTrainer(nn.Module):
             
             # Compute losses
             loss_val = criterion(predictions, labels)
-            regularization_loss = embed_penalty(self.model.num_embedding.bin_embedding.weight) if self.model.num_embedding is not None else 0.0
+            regularization_loss = embed_penalty(self.model.pretrained.num_embedding.bin_embedding.weight) if self.model.pretrained.num_embedding is not None else 0.0
             
             # Combined loss
             total_batch_loss = loss_val + regularization_loss
@@ -1203,7 +1203,7 @@ class TabularBERTTrainer(nn.Module):
                 
                 # Compute losses
                 loss_val = criterion(predictions, labels)
-                regularization_loss = embed_penalty(self.model.num_embedding.bin_embedding.weight) if self.model.num_embedding is not None else 0.0
+                regularization_loss = embed_penalty(self.model.pretrained.num_embedding.bin_embedding.weight) if self.model.pretrained.num_embedding is not None else 0.0
                 
                 # Combined loss
                 total_batch_loss = loss_val + regularization_loss
