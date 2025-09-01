@@ -47,10 +47,10 @@ class CheckPoint:
             'model_config': {
                 'tabular_bert': {
                     'encoding_info': model.encoding_info,
-                    'embedding_dim': model.embedding.embedding_dim,
-                    'n_layers': model.bert.n_layers,
-                    'n_heads': model.bert.n_heads,
-                    'dropout': model.bert.dropout,
+                    'embedding_dim': model.pretrained.embedding_dim,
+                    'n_layers': model.pretrained.n_layers,
+                    'n_heads': model.pretrained.n_heads,
+                    'dropout': model.pretrained.dropout,
                 },
                 'mlp_head': {
                     'input_dim': model.head.input_dim,
