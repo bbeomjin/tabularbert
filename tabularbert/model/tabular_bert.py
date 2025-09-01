@@ -1051,7 +1051,7 @@ class TabularBERTTrainer(nn.Module):
             checkpoint = CheckPoint(self.save_dir, phase='finetuning', max=False)
         
         # Define model
-        self.model = DownstreamModel(pretrained_model=self.model,
+        self.model = DownstreamModel(pretrained=self.model,
                                      head = self.head)
         
         # Define optimizer
