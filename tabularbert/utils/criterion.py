@@ -24,17 +24,25 @@ class TabularCrossEntropy(nn.Module):
         ignore_index (int): Index to ignore in loss calculation. Default: -100
     """
     
-    def __init__(self, encoding_info: Dict[str, int], ignore_index: int=-100) -> None:
+    def __init__(self, encoding_info: Dict[str, Dict[str, int]], ignore_index: int=-100) -> None:
         super(TabularCrossEntropy, self).__init__()
         self.encoding_info = encoding_info
         self.ignore_index = ignore_index
         self.num_features = len(encoding_info)
+        self.compute_ids = [i for i, (_, v) in enumerate(encoding_info.items()) if 'num_categories' in v.keys()]
+
+    def _compute_ce(self, prediction: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        """
+        Compute cross-entropy loss for a single feature.
         
-        # Create cross-entropy loss for each feature
-        self.ce_losses = nn.ModuleList([
-            nn.CrossEntropyLoss(ignore_index=ignore_index) 
-            for _ in encoding_info
-        ])
+        Args:
+            prediction (torch.Tensor): Logits for the feature
+            target (torch.Tensor): Target class indices
+            
+        Returns:
+            torch.Tensor: Cross-entropy loss for valid (non-ignored) targets
+        """
+        return F.cross_entropy(prediction, target, ignore_index=self.ignore_index)
         
     def forward(self, predictions: List[torch.Tensor], targets: torch.Tensor) -> torch.Tensor:
         """
@@ -49,8 +57,8 @@ class TabularCrossEntropy(nn.Module):
         """
         total_loss = 0.0
         
-        for feature_idx, ce_loss in enumerate(self.ce_losses):
-            feature_loss = ce_loss(predictions[feature_idx], targets[:, feature_idx])
+        for feature_idx in self.compute_ids:
+            feature_loss = self._compute_ce(predictions[feature_idx], targets[:, feature_idx])
             total_loss += feature_loss
             
         return total_loss / self.num_features
@@ -67,12 +75,13 @@ class TabularMSE(nn.Module):
         encoding_info (Dict[str, int]): Mapping of feature names to dimensions
     """
     
-    def __init__(self, encoding_info: Dict[str, int]) -> None:
+    def __init__(self, encoding_info: Dict[str, Dict[str, int]]) -> None:
         super(TabularMSE, self).__init__()
         self.encoding_info = encoding_info
         self.num_features = len(encoding_info)
+        self.compute_ids = [i for i, (_, v) in enumerate(encoding_info.items()) if 'num_bins' in v.keys()]
         
-    def _compute_feature_mse(self, prediction: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    def _compute_mse(self, prediction: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """
         Compute MSE for a single feature, handling NaN values.
         
@@ -103,8 +112,8 @@ class TabularMSE(nn.Module):
         """
         total_loss = 0.0
         
-        for feature_idx in range(self.num_features):
-            feature_loss = self._compute_feature_mse(
+        for feature_idx in self.compute_ids:
+            feature_loss = self._compute_mse(
                 predictions[feature_idx], 
                 targets[:, feature_idx]
             )
@@ -125,12 +134,14 @@ class TabularWasserstein(nn.Module):
         ignore_index (int): Index to ignore in loss calculation. Default: -100
     """
     
-    def __init__(self, encoding_info: Dict[str, int], ignore_index: int=-100) -> None:
+    def __init__(self, encoding_info: Dict[str, Dict[str, int]], ignore_index: int=-100) -> None:
         super(TabularWasserstein, self).__init__()
         self.encoding_info = encoding_info
         self.ignore_index = ignore_index
         self.num_features = len(encoding_info)
-
+        self.compute_ids = [i for i, (_, v) in enumerate(encoding_info.items()) if 'num_bins' in v.keys()]
+        self.vocab_sizes = [v.get('num_bins', None) for _, v in encoding_info.items()]
+        
     def _compute_wasserstein(self, prediction: torch.Tensor, target: torch.Tensor, 
                            vocab_size: int) -> torch.Tensor:
         """
@@ -180,12 +191,11 @@ class TabularWasserstein(nn.Module):
             torch.Tensor: Average Wasserstein loss across all features
         """
         total_loss = 0.0
-        
-        for feature_idx, (feature_name, vocab_size) in enumerate(self.encoding_info.items()):
+        for feature_idx in self.compute_ids:
             feature_loss = self._compute_wasserstein(
                 predictions[feature_idx], 
                 targets[:, feature_idx],
-                vocab_size
+                self.vocab_sizes[feature_idx]
             )
             total_loss += feature_loss
             

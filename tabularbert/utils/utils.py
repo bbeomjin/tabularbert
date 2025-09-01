@@ -35,8 +35,6 @@ class CheckPoint:
                 'n_layers': model.n_layers,
                 'n_heads': model.n_heads,
                 'dropout': model.dropout,
-                'max_len': model.max_len,
-                'max_position': model.max_position
             },
             'regularization_lambda': config['pretraining']['training']['regularization_lambda'],
             'penalty': config['pretraining']['training']['penalty']
@@ -49,8 +47,6 @@ class CheckPoint:
             'model_config': {
                 'tabular_bert': {
                     'encoding_info': model.encoding_info,
-                    'max_len': model.embedding.max_len,
-                    'max_position': model.embedding.max_position,
                     'embedding_dim': model.embedding.embedding_dim,
                     'n_layers': model.bert.n_layers,
                     'n_heads': model.bert.n_heads,
