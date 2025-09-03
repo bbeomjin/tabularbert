@@ -707,7 +707,9 @@ class TabularBERTTrainer(nn.Module):
                 self._log_epoch_progress(train_metrics['avg_total_loss'])
         
         print(f"\n Pretraining completed!")
-        print(f"Model saved to: {self.save_dir}")
+        if self.save:
+            checkpoint(train_metrics['avg_total_loss'], self.model, self.config, True)
+            print(f"Model saved to: {self.save_dir}")
         
         # Reset
         self.save = False
@@ -1123,6 +1125,7 @@ class TabularBERTTrainer(nn.Module):
         
         print(f"\n Fine-tuning completed!")
         if self.save:
+            checkpoint(train_metrics['avg_total_loss'], self.model, self.config, True)
             print(f"Model saved to: {self.save_dir}")
         self.save = False
         

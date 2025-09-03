@@ -18,8 +18,6 @@ class CheckPoint:
         save_path = os.path.expanduser(save_path)
         if not os.path.exists(save_path):
             os.makedirs(save_path)
-        
-        self.save_path = os.path.join(save_path, 'model_checkpoint.pt')
     
     def _create_pretraining_checkpoint(self, model, config):
         """Create checkpoint for pretraining phase."""
@@ -65,16 +63,21 @@ class CheckPoint:
             'penalty': config['fine-tuning']['training']['penalty']
         }
     
-    def _save_checkpoint(self, model, config):
+    def _save_checkpoint(self, model, config, last_save: bool=False):
         """Save checkpoint based on phase."""
         if self.phase == 'pretraining':
             checkpoint = self._create_pretraining_checkpoint(model, config)
         else:
             checkpoint = self._create_finetuning_checkpoint(model, config)
         
-        torch.save(checkpoint, self.save_path)
+        if last_save:
+            save_path = os.path.join(self.save_path, 'model_checkpoint_last.pt')
+        else:
+            save_path = os.path.join(self.save_path, 'model_checkpoint.pt')
+        
+        torch.save(checkpoint, save_path)
     
-    def __call__(self, x, model, config):
+    def __call__(self, x, model, config, last_save: bool=False):
         should_save = False
         
         if self.loss is None:
@@ -88,7 +91,10 @@ class CheckPoint:
                 should_save = True
         
         if should_save:
-            self._save_checkpoint(model, config)
+            self._save_checkpoint(model, config, False)
+            
+        if last_save:
+            self._save_checkpoint(model, config, True)
 
 
 
