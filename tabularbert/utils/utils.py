@@ -15,9 +15,9 @@ class CheckPoint:
         self.max = max
         self.loss = None
         
-        save_path = os.path.expanduser(save_path)
-        if not os.path.exists(save_path):
-            os.makedirs(save_path)
+        self.save_path = os.path.expanduser(save_path)
+        if not os.path.exists(self.save_path):
+            os.makedirs(self.save_path)
     
     def _create_pretraining_checkpoint(self, model, config):
         """Create checkpoint for pretraining phase."""
