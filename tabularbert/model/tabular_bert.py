@@ -311,7 +311,8 @@ class TabularBERTTrainer(nn.Module):
                                       phase: str="pretraining",
                                       project_name: str="tabular-bert",
                                       experiment_name: str=None,
-                                      use_wandb: bool=True) -> None:
+                                      use_wandb: bool=True,
+                                      save_model_at_last: bool=False) -> None:
         """
         Setup save directories and logging infrastructure.
         
@@ -323,6 +324,7 @@ class TabularBERTTrainer(nn.Module):
             project_name (str): WandB project name. Default: "tabular-bert"
             experiment_name (str, optional): Experiment name for WandB run
             use_wandb (bool): Whether to use WandB logging. Default: True
+            save_model_at_last (bool): Whether to save model at last epoch. Default: False
         """
         
         assert phase in ['pretraining', 'fine-tuning'], "Phase must be 'pretraining' or 'fine-tuning'"
@@ -343,7 +345,8 @@ class TabularBERTTrainer(nn.Module):
             },
             # System configuration
             'system': {
-                'device': str(self.device)
+                'device': str(self.device),
+                'save_model_at_last': save_model_at_last
             },
             # Pretraining/Finetuning configuration
             phase: {'model': {},
@@ -365,6 +368,7 @@ class TabularBERTTrainer(nn.Module):
             use_wandb=use_wandb
         )
         self.save = True
+        self.save_model_at_last = save_model_at_last
         self.phase = phase
     
     def _save_config(self) -> None:
@@ -643,7 +647,7 @@ class TabularBERTTrainer(nn.Module):
         
         # Define checkpoint
         if self.save:
-            checkpoint = CheckPoint(self.save_dir, phase = 'pretraining', max=False)
+            checkpoint = CheckPoint(self.save_dir, phase = 'pretraining', max=False, save_model_at_last=self.save_model_at_last)
         
         # Define optimizer
         if self.optimizer is None:
@@ -708,11 +712,11 @@ class TabularBERTTrainer(nn.Module):
         
         print(f"\n Pretraining completed!")
         if self.save:
-            checkpoint(train_metrics['avg_total_loss'], self.model, self.config, True)
             print(f"Model saved to: {self.save_dir}")
         
         # Reset
         self.save = False
+        self.save_model_at_last = False
         self.optimizer = None
     
     def _run_pretraining_epoch(self, optimizer, scheduler, trainloader, mse_loss, wasserstein_loss, ce_loss,
@@ -1050,7 +1054,7 @@ class TabularBERTTrainer(nn.Module):
         
         # Define checkpoint
         if self.save:
-            checkpoint = CheckPoint(self.save_dir, phase='finetuning', max=False)
+            checkpoint = CheckPoint(self.save_dir, phase='finetuning', max=False, save_model_at_last=self.save_model_at_last)
         
         # Define model
         self.model = DownstreamModel(pretrained=self.model,
@@ -1125,7 +1129,6 @@ class TabularBERTTrainer(nn.Module):
         
         print(f"\n Fine-tuning completed!")
         if self.save:
-            checkpoint(train_metrics['avg_total_loss'], self.model, self.config, True)
             print(f"Model saved to: {self.save_dir}")
         self.save = False
         
