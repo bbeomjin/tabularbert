@@ -35,7 +35,7 @@ class NumEmbedding(nn.Module):
         self._init_weights()
         
     def _init_weights(self):
-        nn.init.kaiming_uniform_(self.bin_embedding.weight)
+        nn.init.kaiming_normal_(self.bin_embedding.weight)
         
     def forward(self, bin_ids: torch.Tensor) -> torch.Tensor:
         """
@@ -93,7 +93,7 @@ class CatEmbedding(nn.Module):
         self._init_weights()
         
     def _init_weights(self):
-        nn.init.kaiming_uniform_(self.bin_embedding.weight)
+        nn.init.kaiming_normal_(self.bin_embedding.weight)
         
     def forward(self, bin_ids: torch.Tensor) -> torch.Tensor:
         """
@@ -139,7 +139,7 @@ class PositionalEmbedding(nn.Module):
         self._init_weights()
     
     def _init_weights(self):
-        nn.init.kaiming_uniform_(self.embedding.weight)
+        nn.init.kaiming_normal_(self.embedding.weight)
             
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
