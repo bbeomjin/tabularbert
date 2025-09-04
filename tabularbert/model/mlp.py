@@ -66,7 +66,7 @@ class MLP(nn.Module):
         # """Initialize weights using Xavier uniform initialization."""
         for module in self.modules():
             if isinstance(module, nn.Linear):
-                # nn.init.xavier_uniform_(module.weight)
+                nn.init.kaiming_uniform_(module.weight)
                 if module.bias is not None:
                     nn.init.zeros_(module.bias)
     

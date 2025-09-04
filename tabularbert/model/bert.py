@@ -92,7 +92,15 @@ class Classifier(nn.Module):
             nn.Linear(embedding_dim, v.get('num_bins', v.get('num_categories'))) 
             for _, v in encoding_info.items()
         ])
+        self._init_weights()
         
+    def _init_weights(self):
+        for layer in self.fc:
+            if layer is not None:
+                nn.init.kaiming_uniform_(layer.weight)
+                if layer.bias is not None:
+                    nn.init.zeros_(layer.bias)
+    
     def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
         """
         Forward pass through the classifier.
@@ -148,6 +156,14 @@ class Regressor(nn.Module):
             nn.Linear(embedding_dim, 1) 
             if 'num_bins' in v.keys() else None for k, v in encoding_info.items()
         ])
+        self._init_weights()
+    
+    def _init_weights(self):
+        for layer in self.fc:
+            if layer is not None:
+                nn.init.kaiming_uniform_(layer.weight)
+                if layer.bias is not None:
+                    nn.init.zeros_(layer.bias)
     
     def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
         """

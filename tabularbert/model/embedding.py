@@ -1,5 +1,5 @@
-import torch.nn as nn
 import torch
+import torch.nn as nn
 
 class NumEmbedding(nn.Module):
     """
@@ -32,6 +32,10 @@ class NumEmbedding(nn.Module):
             
         self.positional_embedding = PositionalEmbedding(max_position, embedding_dim)
         self.bin_embedding = nn.Embedding(max_len, embedding_dim)
+        self._init_weights()
+        
+    def _init_weights(self):
+        nn.init.kaiming_uniform_(self.bin_embedding.weight)
         
     def forward(self, bin_ids: torch.Tensor) -> torch.Tensor:
         """
@@ -86,6 +90,10 @@ class CatEmbedding(nn.Module):
             
         self.positional_embedding = PositionalEmbedding(max_position, embedding_dim)
         self.bin_embedding = nn.Embedding(max_len, embedding_dim)
+        self._init_weights()
+        
+    def _init_weights(self):
+        nn.init.kaiming_uniform_(self.bin_embedding.weight)
         
     def forward(self, bin_ids: torch.Tensor) -> torch.Tensor:
         """
@@ -128,7 +136,11 @@ class PositionalEmbedding(nn.Module):
         self.max_len = max_len
         self.embedding_dim = embedding_dim
         self.embedding = nn.Embedding(max_len, embedding_dim)
-        
+        self._init_weights()
+    
+    def _init_weights(self):
+        nn.init.kaiming_uniform_(self.embedding.weight)
+            
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Forward pass of the PositionalEmbedding layer.
