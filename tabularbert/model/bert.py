@@ -97,7 +97,8 @@ class Classifier(nn.Module):
     def _init_weights(self):
         for layer in self.fc:
             if layer is not None:
-                nn.init.normal_(layer.weight)
+                # nn.init.normal_(layer.weight)
+                nn.init.kaiming_normal_(layer.weight)
                 if layer.bias is not None:
                     nn.init.zeros_(layer.bias)
     
@@ -161,7 +162,8 @@ class Regressor(nn.Module):
     def _init_weights(self):
         for layer in self.fc:
             if layer is not None:
-                nn.init.normal_(layer.weight)
+                # nn.init.normal_(layer.weight)
+                nn.init.kaiming_normal_(layer.weight)
                 if layer.bias is not None:
                     nn.init.zeros_(layer.bias)
     
