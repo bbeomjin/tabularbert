@@ -36,7 +36,7 @@ class NumEmbedding(nn.Module):
         
     def _init_weights(self):
         # nn.init.normal_(self.bin_embedding.weight)
-        nn.init.trunc_normal_(self.embedding.weight, std=0.02, a=-0.04, b=0.04)
+        nn.init.trunc_normal_(self.bin_embedding.weight, std=0.02, a=-0.04, b=0.04)
         
     def forward(self, bin_ids: torch.Tensor) -> torch.Tensor:
         """
@@ -95,7 +95,7 @@ class CatEmbedding(nn.Module):
         
     def _init_weights(self):
         # nn.init.normal_(self.bin_embedding.weight)
-        nn.init.trunc_normal_(self.embedding.weight, std=0.02, a=-0.04, b=0.04)
+        nn.init.trunc_normal_(self.bin_embedding.weight, std=0.02, a=-0.04, b=0.04)
         
     def forward(self, bin_ids: torch.Tensor) -> torch.Tensor:
         """
