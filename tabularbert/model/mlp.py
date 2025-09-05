@@ -67,7 +67,7 @@ class MLP(nn.Module):
         for module in self.modules():
             if isinstance(module, nn.Linear):
                 # nn.init.normal_(module.weight)
-                nn.init.trunc_normal_(layer.weight, std=0.02, a=-0.04, b=0.04)
+                nn.init.trunc_normal_(module.weight, std=0.02, a=-0.04, b=0.04)
                 if module.bias is not None:
                     nn.init.zeros_(module.bias)
     
