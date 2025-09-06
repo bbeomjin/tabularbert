@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import math
 from typing import Dict, List
 
 
@@ -98,7 +99,8 @@ class Classifier(nn.Module):
         for layer in self.fc:
             if layer is not None:
                 # nn.init.normal_(layer.weight)
-                nn.init.trunc_normal_(layer.weight, std=0.02, a=-0.04, b=0.04)
+                stdv = 1. / math.sqrt(layer.weight.size(1))
+                nn.init.normal_(layer.weight, std=stdv, a=-2 * stdv, b=2 * stdv)
                 if layer.bias is not None:
                     nn.init.zeros_(layer.bias)
     
@@ -163,7 +165,8 @@ class Regressor(nn.Module):
         for layer in self.fc:
             if layer is not None:
                 # nn.init.normal_(layer.weight)
-                nn.init.trunc_normal_(layer.weight, std=0.02, a=-0.04, b=0.04)
+                stdv = 1. / math.sqrt(layer.weight.size(1))
+                nn.init.trunc_normal_(layer.weight, std=stdv, a=-2 * stdv, b=2 * stdv)
                 if layer.bias is not None:
                     nn.init.zeros_(layer.bias)
     

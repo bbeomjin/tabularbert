@@ -6,6 +6,7 @@ and regression on tabular data.
 
 import torch
 import torch.nn as nn
+import math
 from typing import List
 
 class MLP(nn.Module):
@@ -67,7 +68,8 @@ class MLP(nn.Module):
         for module in self.modules():
             if isinstance(module, nn.Linear):
                 # nn.init.normal_(module.weight)
-                nn.init.trunc_normal_(module.weight, std=0.02, a=-0.04, b=0.04)
+                stdv = 1. / math.sqrt(module.weight.size(1))
+                nn.init.trunc_normal_(module.weight, std=stdv, a=-2 * stdv, b=2 * stdv)
                 if module.bias is not None:
                     nn.init.zeros_(module.bias)
     
