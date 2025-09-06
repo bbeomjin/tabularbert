@@ -610,7 +610,7 @@ class TabularBERTTrainer(nn.Module):
 
             validloader = DataLoader(valid_dataset, 
                                      batch_size=batch_size, 
-                                     shuffle=True,
+                                     shuffle=False,
                                      drop_last=False,
                                      num_workers=num_workers)
             
@@ -1013,7 +1013,7 @@ class TabularBERTTrainer(nn.Module):
             valid_dataset = FinetuneDataset(valid_bin_ids, valid_target_y)
             validloader = DataLoader(valid_dataset, 
                                      batch_size=batch_size, 
-                                     shuffle=True,
+                                     shuffle=False,
                                      drop_last=False,
                                      num_workers=num_workers)
             
@@ -1054,7 +1054,7 @@ class TabularBERTTrainer(nn.Module):
         
         # Define checkpoint
         if self.save:
-            checkpoint = CheckPoint(self.save_dir, phase='finetuning', max=False, save_model_at_last=self.save_model_at_last)
+            checkpoint = CheckPoint(self.save_dir, phase='finetuning', max=False, save_model_at_last=self.save_model_at_last, save_model_after_epochs=0.9 * epochs)
         
         # Define model
         self.model = DownstreamModel(pretrained=self.model,
@@ -1108,9 +1108,9 @@ class TabularBERTTrainer(nn.Module):
                 # Model checkpointing based on validation loss
                 if self.save:
                     if metric is not None:
-                        checkpoint(valid_metrics['metric'], self.model, self.config)
+                        checkpoint(valid_metrics['metric'], self.model, self.config, epoch)
                     else:
-                        checkpoint(valid_metrics['avg_total_loss'], self.model, self.config)
+                        checkpoint(valid_metrics['avg_total_loss'], self.model, self.config, epoch)
                     
                 # Elegant progress reporting
                 self._log_epoch_progress(train_metrics['avg_total_loss'], valid_metrics['avg_total_loss'],
@@ -1119,9 +1119,9 @@ class TabularBERTTrainer(nn.Module):
                 # No validation data - checkpoint on training loss
                 if self.save:
                     if metric is not None:
-                        checkpoint(train_metrics['metric'], self.model, self.config)
+                        checkpoint(train_metrics['metric'], self.model, self.config, epoch)
                     else:
-                        checkpoint(train_metrics['avg_total_loss'], self.model, self.config)
+                        checkpoint(train_metrics['avg_total_loss'], self.model, self.config, epoch)
                 
                 # Training-only progress reporting
                 self._log_epoch_progress(train_metrics['avg_total_loss'],

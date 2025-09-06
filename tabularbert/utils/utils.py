@@ -10,11 +10,12 @@ except ImportError:
     warnings.warn("WandB is not installed. Falling back to TensorBoard for logging. To enable WandB support, install it with: pip install wandb")
 
 class CheckPoint:
-    def __init__(self, save_path: str, phase: str, max: bool, save_model_at_last: bool=False):
+    def __init__(self, save_path: str, phase: str, max: bool, save_model_at_last: bool=False, save_model_after_epochs: int=None):
         self.phase = phase
         self.max = max
         self.loss = None
         self.save_model_at_last = save_model_at_last
+        self.save_model_after_epochs = save_model_after_epochs
         
         self.save_path = os.path.expanduser(save_path)
         if not os.path.exists(self.save_path):
@@ -74,24 +75,38 @@ class CheckPoint:
         save_path = os.path.join(self.save_path, 'model_checkpoint.pt')
         torch.save(checkpoint, save_path)
     
-    def __call__(self, x, model, config):
+    def __call__(self, x, model, config, epoch=None):
         if self.save_model_at_last:
             self._save_checkpoint(model, config)
         else:
             should_save = False
-            
-            if self.loss is None:
-                # First time - always save
-                self.loss = x
-                should_save = True
-            else:
-                # Check if we should update based on max/min criteria
-                if (self.max and x > self.loss) or (not self.max and x < self.loss):
+            if self.save_model_after_epochs is not None and epoch is not None and epoch >= self.save_model_after_epochs:    
+                if self.loss is None:
+                    # First time - always save
                     self.loss = x
                     should_save = True
+                else:
+                    # Check if we should update based on max/min criteria
+                    if (self.max and x > self.loss) or (not self.max and x < self.loss):
+                        self.loss = x
+                        should_save = True
+                
+                if should_save:
+                    self._save_checkpoint(model, config)
             
-            if should_save:
-                self._save_checkpoint(model, config)
+            else:
+                if self.loss is None:
+                    # First time - always save
+                    self.loss = x
+                    should_save = True
+                else:
+                    # Check if we should update based on max/min criteria
+                    if (self.max and x > self.loss) or (not self.max and x < self.loss):
+                        self.loss = x
+                        should_save = True
+                
+                if should_save:
+                    self._save_checkpoint(model, config)
             
 
 
