@@ -100,7 +100,7 @@ class Classifier(nn.Module):
             if layer is not None:
                 # nn.init.normal_(layer.weight)
                 stdv = 1. / math.sqrt(layer.weight.size(1))
-                nn.init.normal_(layer.weight, std=stdv, a=-2 * stdv, b=2 * stdv)
+                nn.init.trunc_normal_(layer.weight, std=stdv, a=-2 * stdv, b=2 * stdv)
                 if layer.bias is not None:
                     nn.init.zeros_(layer.bias)
     
