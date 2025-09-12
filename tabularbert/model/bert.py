@@ -93,6 +93,17 @@ class Classifier(nn.Module):
             for _, v in encoding_info.items()
         ])
         
+        # Initialize weights
+        self._init_weights()
+        
+    def _init_weights(self):
+        """Initialize weights using Xavier normal initialization."""
+        for layer in self.fc:
+            if layer is not None:
+                nn.init.xavier_normal_(layer.weight)
+                if layer.bias is not None:
+                    nn.init.zeros_(layer.bias)
+        
     def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
         """
         Forward pass through the classifier.
@@ -148,6 +159,17 @@ class Regressor(nn.Module):
             nn.Linear(embedding_dim, 1) 
             if 'num_bins' in v.keys() else None for k, v in encoding_info.items()
         ])
+        
+        # Initialize weights
+        self._init_weights()
+        
+    def _init_weights(self):
+        """Initialize weights using Xavier normal initialization."""
+        for layer in self.fc:
+            if layer is not None:
+                nn.init.xavier_normal_(layer.weight)
+                if layer.bias is not None:
+                    nn.init.zeros_(layer.bias)
     
     def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
         """
