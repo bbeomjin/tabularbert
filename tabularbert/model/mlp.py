@@ -63,10 +63,10 @@ class MLP(nn.Module):
         self._init_weights()
     
     def _init_weights(self):
-        """Initialize weights using Xavier normal initialization."""
+        """Initialize weights using Xavier uniform initialization."""
         for module in self.modules():
             if isinstance(module, nn.Linear):
-                nn.init.xavier_normal_(module.weight)
+                nn.init.xavier_uniform_(module.weight)
                 if module.bias is not None:
                     nn.init.zeros_(module.bias)
     
