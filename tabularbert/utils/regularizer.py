@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import math
 
 class SquaredL2Penalty(nn.Module):
     def __init__(self, lamb):
@@ -7,7 +8,9 @@ class SquaredL2Penalty(nn.Module):
         self.lamb = lamb
     
     def forward(self, weight):
-        penalty = torch.mean(torch.sum(torch.diff(weight[1:], dim = 0)**2, dim = -1))
+        diff = torch.diff(weight[1:], dim=0)
+        penalty = (diff.pow(2).sum(dim=-1) / diff.size(-1)).mean()
+        # penalty = diff.pow(2).sum(dim=-1).mean()
         return self.lamb * penalty
 
 class L2Penalty(nn.Module):
@@ -17,6 +20,8 @@ class L2Penalty(nn.Module):
         self.tol = tol
         
     def forward(self, weight):
-        penalty = torch.mean(torch.sqrt(torch.sum(torch.diff(weight[1:], dim = 0)**2, dim = -1) + self.tol))
+        diff = torch.diff(weight[1:], dim=0)
+        penalty = (torch.sqrt(diff.pow(2).sum(dim=-1) + self.tol) / math.sqrt(diff.size(-1))).mean()
+        # penalty = (torch.sqrt(diff.pow(2).sum(dim=-1) + self.tol)).mean()
         return self.lamb * penalty
 
