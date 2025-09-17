@@ -97,10 +97,10 @@ class Classifier(nn.Module):
         self._init_weights()
         
     def _init_weights(self):
-        """Initialize weights using Xavier normal initialization."""
+        """Initialize weights using Xavier uniform initialization."""
         for layer in self.fc:
             if layer is not None:
-                nn.init.xavier_normal_(layer.weight)
+                nn.init.xavier_uniform_(layer.weight)
                 if layer.bias is not None:
                     nn.init.zeros_(layer.bias)
         
@@ -164,10 +164,10 @@ class Regressor(nn.Module):
         self._init_weights()
         
     def _init_weights(self):
-        """Initialize weights using Xavier normal initialization."""
+        """Initialize weights using Xavier uniform initialization."""
         for layer in self.fc:
             if layer is not None:
-                nn.init.xavier_normal_(layer.weight)
+                nn.init.xavier_uniform_(layer.weight)
                 if layer.bias is not None:
                     nn.init.zeros_(layer.bias)
     
