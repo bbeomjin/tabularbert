@@ -22,17 +22,19 @@ class ClassificationError(nn.Module):
     
 
 class RMSE(nn.Module):
-    def __init__(self):
+    def __init__(self, weight: float=1.0):
         super(RMSE, self).__init__()
+        self.weight = weight
         
     def forward(self, preds, targets):
-        return (preds - targets).pow(2).mean().sqrt()
+        return self.weight * (preds - targets).pow(2).mean().sqrt()
 
 
 
 class MAE(nn.Module):
-    def __init__(self):
+    def __init__(self, weight: float=1.0):
         super(MAE, self).__init__()
+        self.weight = weight
         
     def forward(self, preds, targets):
-        return (preds - targets).abs().mean()
+        return self.weight * (preds - targets).abs().mean()
