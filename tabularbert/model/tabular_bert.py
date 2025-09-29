@@ -473,7 +473,7 @@ class TabularBERTTrainer(nn.Module):
             self.output_dim = output_dim
         
         # Update model configuration
-        hidden_layers = [self.model.embedding_dim] if hidden_layers is None else hidden_layers
+        hidden_layers = [] if hidden_layers is None else hidden_layers
         if self.save:
             self.config['fine-tuning']['model']['head'] = {
                 'output_dim': output_dim,
