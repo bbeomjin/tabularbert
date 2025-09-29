@@ -691,20 +691,20 @@ class TabularBERTTrainer(nn.Module):
                 )
                 
                 # Model checkpointing based on validation loss
-                current_loss = valid_metrics['avg_total_loss']
+                current_loss = valid_metrics['risk']
                 if self.save:
                     checkpoint(current_loss, self.model, self.config)
                 
                 # Elegant progress reporting
-                self._log_epoch_progress(train_metrics['avg_total_loss'], valid_metrics['avg_total_loss'])
+                self._log_epoch_progress(train_metrics['risk'], valid_metrics['risk'])
             else:
                 # No validation data - checkpoint on training loss
-                current_loss = train_metrics['avg_total_loss']
+                current_loss = train_metrics['risk']
                 if self.save:
                     checkpoint(current_loss, self.model, self.config)
                 
                 # Training-only progress reporting
-                self._log_epoch_progress(train_metrics['avg_total_loss'])
+                self._log_epoch_progress(train_metrics['risk'])
         
         print(f"\n Pretraining completed!")
         if self.save:
@@ -726,19 +726,19 @@ class TabularBERTTrainer(nn.Module):
         total_loss = 0.0
         num_batches = len(trainloader)
         
-        for batch_idx, (bin_ids, labels, tabular_x) in enumerate(trainloader):
-            bin_ids = bin_ids.to(self.device)
-            labels = labels.to(self.device)
-            tabular_x = tabular_x.to(self.device)
+        for batch_idx, (batch_bin_ids, batch_labels, batch_tabular_x) in enumerate(trainloader):
+            batch_bin_ids = batch_bin_ids.to(self.device)
+            batch_labels = batch_labels.to(self.device)
+            batch_tabular_x = batch_tabular_x.to(self.device)
             
             # Forward pass
             optimizer.zero_grad()
-            cls_predictions, reg_predictions = self.model(bin_ids)
+            cls_predictions, reg_predictions = self.model(batch_bin_ids)
             
             # Compute losses
-            mse_loss_val = mse_loss(reg_predictions, tabular_x)
-            wasserstein_loss_val = wasserstein_loss(cls_predictions, labels)
-            ce_loss_val = ce_loss(cls_predictions, labels)
+            mse_loss_val = mse_loss(reg_predictions, batch_tabular_x)
+            wasserstein_loss_val = wasserstein_loss(cls_predictions, batch_labels)
+            ce_loss_val = ce_loss(cls_predictions, batch_labels)
             regularization_loss = embed_penalty(self.model.num_embedding.bin_embedding.weight) if self.model.num_embedding is not None else 0.0
             
             # Combined loss
@@ -763,7 +763,7 @@ class TabularBERTTrainer(nn.Module):
             epoch += 1
         
         return {
-            'avg_total_loss': total_loss / num_batches,
+            'risk': total_loss / num_batches,
             'global_step': epoch,
         }
     
@@ -776,43 +776,50 @@ class TabularBERTTrainer(nn.Module):
             dict: Validation metrics including average loss
         """
         self.model.eval()
-        total_loss = 0.0
-        total_mse_loss = 0.0
-        total_wasserstein_loss = 0.0
-        total_ce_loss = 0.0
-        num_batches = len(validloader)
         
         with torch.no_grad():
-            for batch_idx, (bin_ids, labels, tabular_x) in enumerate(validloader):
-                bin_ids = bin_ids.to(self.device)
-                labels = labels.to(self.device)
-                tabular_x = tabular_x.to(self.device)
+            cls_predictions = []
+            reg_predictions = []
+            labels = []
+            tabular_x = []
+            for batch_idx, (batch_bin_ids, batch_labels, batch_tabular_x) in enumerate(validloader):
+                batch_bin_ids = batch_bin_ids.to(self.device)
+                batch_labels = batch_labels.to(self.device)
+                batch_tabular_x = batch_tabular_x.to(self.device)
                 
                 # Forward pass only
-                cls_predictions, reg_predictions = self.model(bin_ids)
+                predictions = self.model(batch_bin_ids)
+                cls_predictions.append(predictions[0])
+                reg_predictions.append(predictions[1])
+                labels.append(batch_labels)
+                tabular_x.append(batch_tabular_x)
+            
+            cls_predictions = torch.cat(cls_predictions, dim=0)
+            reg_predictions = torch.cat(reg_predictions, dim=0)
+            labels = torch.cat(labels, dim=0)
+            tabular_x = torch.cat(tabular_x, dim=0)
                 
-                # Compute losses
-                mse_loss_val = mse_loss(reg_predictions, tabular_x)
-                wasserstein_loss_val = wasserstein_loss(cls_predictions, labels)
-                ce_loss_val = ce_loss(cls_predictions, labels)
-                regularization_loss = embed_penalty(self.model.num_embedding.bin_embedding.weight) if self.model.num_embedding is not None else 0.0
-                
-                # Combined loss
-                total_batch_loss = mse_loss_val + wasserstein_loss_val + ce_loss_val + regularization_loss
-                total_loss += total_batch_loss.item()
-                total_wasserstein_loss += wasserstein_loss_val.item()
-                total_mse_loss += mse_loss_val.item()
-                total_ce_loss += ce_loss_val.item()
-                
-                # Log validation metrics
-                if self.save:
-                    self.logger.log_scalar('Loss/Valid/AvgTotal', total_loss / num_batches, epoch)
-                    self.logger.log_scalar('Loss/Valid/AvgMSE', total_mse_loss / num_batches, epoch)
-                    self.logger.log_scalar('Loss/Valid/AvgWasserstein', total_wasserstein_loss / num_batches, epoch)
-                    self.logger.log_scalar('Loss/Valid/AvgCE', total_ce_loss / num_batches, epoch)
+            # Compute losses
+            mse_loss_val = mse_loss(reg_predictions, tabular_x)
+            wasserstein_loss_val = wasserstein_loss(cls_predictions, labels)
+            ce_loss_val = ce_loss(cls_predictions, labels)
+            regularization_loss = embed_penalty(self.model.num_embedding.bin_embedding.weight) if self.model.num_embedding is not None else 0.0
+            
+            # Combined loss
+            risk = mse_loss_val + wasserstein_loss_val + ce_loss_val + regularization_loss
+            wasserstein_loss = wasserstein_loss_val.item()
+            mse_loss = mse_loss_val.item()
+            ce_loss = ce_loss_val.item()
+            
+            # Log validation metrics
+            if self.save:
+                self.logger.log_scalar('Loss/Valid/Risk', risk, epoch)
+                self.logger.log_scalar('Loss/Valid/MSE', mse_loss, epoch)
+                self.logger.log_scalar('Loss/Valid/Wasserstein', wasserstein_loss, epoch)
+                self.logger.log_scalar('Loss/Valid/CE', ce_loss, epoch)
                     
         return {
-            'avg_total_loss': total_loss / num_batches,
+            'risk': risk,
         }
     
     def _log_epoch_progress(self, train_loss, valid_loss=None, train_metric=None, valid_metric=None):
@@ -1105,10 +1112,10 @@ class TabularBERTTrainer(nn.Module):
                     if metric is not None:
                         checkpoint(valid_metrics['metric'], self.model, self.config)
                     else:
-                        checkpoint(valid_metrics['avg_total_loss'], self.model, self.config)
+                        checkpoint(valid_metrics['risk'], self.model, self.config)
                     
                 # Elegant progress reporting
-                self._log_epoch_progress(train_metrics['avg_total_loss'], valid_metrics['avg_total_loss'],
+                self._log_epoch_progress(train_metrics['risk'], valid_metrics['risk'],
                                          train_metrics['metric'], valid_metrics['metric'])
             else:
                 # No validation data - checkpoint on training loss
@@ -1116,10 +1123,10 @@ class TabularBERTTrainer(nn.Module):
                     if metric is not None:
                         checkpoint(train_metrics['metric'], self.model, self.config)
                     else:
-                        checkpoint(train_metrics['avg_total_loss'], self.model, self.config)
+                        checkpoint(train_metrics['risk'], self.model, self.config)
                 
                 # Training-only progress reporting
-                self._log_epoch_progress(train_metrics['avg_total_loss'],
+                self._log_epoch_progress(train_metrics['risk'],
                                          train_metric = train_metrics['metric'])
         
         print(f"\n Fine-tuning completed!")
@@ -1139,16 +1146,16 @@ class TabularBERTTrainer(nn.Module):
         avg_metric = 0.0
         num_batches = len(trainloader)
         
-        for batch_idx, (bin_ids, labels) in enumerate(trainloader):
-            bin_ids = bin_ids.to(self.device)
-            labels = labels.to(self.device)
+        for batch_idx, (batch_bin_ids, batch_labels) in enumerate(trainloader):
+            batch_bin_ids = batch_bin_ids.to(self.device)
+            batch_labels = batch_labels.to(self.device)
             
             # Forward pass
             optimizer.zero_grad()
-            predictions = self.model(bin_ids)
+            predictions = self.model(batch_bin_ids)
             
             # Compute losses
-            loss_val = criterion(predictions, labels)
+            loss_val = criterion(predictions, batch_labels)
             regularization_loss = embed_penalty(self.model.pretrained.num_embedding.bin_embedding.weight) if self.model.pretrained.num_embedding is not None else 0.0
             
             # Combined loss
@@ -1162,7 +1169,7 @@ class TabularBERTTrainer(nn.Module):
             # Metrics tracking
             total_loss += total_batch_loss.item()
             if metric is not None:
-                m = metric(predictions, labels)
+                m = metric(predictions, batch_labels)
                 avg_metric += m.item() / num_batches
             
             # Log detailed metrics
@@ -1176,7 +1183,7 @@ class TabularBERTTrainer(nn.Module):
             epoch += 1
         
         return {
-            'avg_total_loss': total_loss / num_batches,
+            'risk': total_loss / num_batches,
             'metric': avg_metric if metric is not None else None,
             'global_step': epoch
         }    
@@ -1189,43 +1196,41 @@ class TabularBERTTrainer(nn.Module):
             dict: Validation metrics including average loss
         """
         self.model.eval()
-        total_loss = 0.0
-        avg_loss = 0.0
-        avg_metric = 0.0
-        num_batches = len(validloader)
         
         with torch.no_grad():
-            for batch_idx, (bin_ids, labels) in enumerate(validloader):
-                bin_ids = bin_ids.to(self.device)
-                labels = labels.to(self.device)
+            predictions = []
+            labels = []
+            for batch_idx, (batch_bin_ids, batch_labels) in enumerate(validloader):
+                batch_bin_ids = batch_bin_ids.to(self.device)
+                batch_labels = batch_labels.to(self.device)
                 
                 # Forward pass only
-                predictions = self.model(bin_ids)
+                predictions.append(self.model(batch_bin_ids))
+                labels.append(batch_labels)
+            
+            predictions = torch.cat(predictions, dim=0)
+            labels = torch.cat(labels, dim=0)
+            
+            # Compute losses
+            loss_val = criterion(predictions, labels)
+            regularization_loss = embed_penalty(self.model.pretrained.num_embedding.bin_embedding.weight) if self.model.pretrained.num_embedding is not None else 0.0
+            
+            # Combined loss
+            risk = loss_val + regularization_loss
+            
+            # Metrics tracking
+            if metric is not None:
+                m = metric(predictions, labels)
                 
-                # Compute losses
-                loss_val = criterion(predictions, labels)
-                regularization_loss = embed_penalty(self.model.pretrained.num_embedding.bin_embedding.weight) if self.model.pretrained.num_embedding is not None else 0.0
-                
-                # Combined loss
-                total_batch_loss = loss_val + regularization_loss
-                total_loss += total_batch_loss.item()
-                avg_loss += loss_val.item() / num_batches
-                
-                # Metrics tracking
+            # Log validation metrics
+            if self.save:
+                self.logger.log_scalar('Loss/Valid/Risk', risk, epoch)
                 if metric is not None:
-                    m = metric(predictions, labels)
-                    avg_metric += m.item() / num_batches
-                
-                # Log validation metrics
-                if self.save:
-                    self.logger.log_scalar('Loss/Valid/AvgTotal', total_loss / num_batches, epoch)
-                    self.logger.log_scalar('Loss/Valid/AvgLoss', avg_loss, epoch)
-                    if metric is not None:
-                        self.logger.log_scalar('Metric/Valid', avg_metric, epoch)
+                    self.logger.log_scalar('Metric/Valid', m, epoch)
         
         return {
-            'avg_total_loss': total_loss / num_batches,
-            'metric': avg_metric if metric is not None else None,
+            'risk': risk,
+            'metric': m if metric is not None else None,
         }
         
     def _process_labels(self, y: ArrayLike, reference: List | ArrayLike=None) -> Tuple[ArrayLike, Dict[str, int]]:
