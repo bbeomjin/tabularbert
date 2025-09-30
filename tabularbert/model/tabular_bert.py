@@ -699,9 +699,10 @@ class TabularBERTTrainer(nn.Module):
                 self._log_epoch_progress(train_metrics['risk'], valid_metrics['risk'])
             else:
                 # No validation data - checkpoint on training loss
-                current_loss = train_metrics['risk']
+                # current_loss = train_metrics['risk']
                 if self.save:
-                    checkpoint(current_loss, self.model, self.config)
+                    # checkpoint(current_loss, self.model, self.config)
+                    checkpoint._save_checkpoint(self.model, self.config)
                 
                 # Training-only progress reporting
                 self._log_epoch_progress(train_metrics['risk'])
