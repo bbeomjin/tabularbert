@@ -795,8 +795,9 @@ class TabularBERTTrainer(nn.Module):
                 labels.append(batch_labels)
                 tabular_x.append(batch_tabular_x)
             
-            cls_predictions = torch.cat(cls_predictions, dim=0)
-            reg_predictions = torch.cat(reg_predictions, dim=0)
+            cls_predictions = [torch.cat(cls_pred, dim=0) for cls_pred in zip(*cls_predictions)]
+            reg_predictions = [torch.cat(reg_pred, dim=0) if any(t is not None for t in reg_pred) else None
+                               for reg_pred in zip(*reg_predictions)]
             labels = torch.cat(labels, dim=0)
             tabular_x = torch.cat(tabular_x, dim=0)
                 
