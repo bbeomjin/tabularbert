@@ -16,7 +16,12 @@ from .embedding import NumEmbedding, CatEmbedding
 from .bert import BERT, Classifier, Regressor
 from .mlp import MLP
 from ..utils.type import ArrayLike
-from ..utils.utils import DualLogger, CheckPoint, make_save_dir
+from ..utils.utils import (
+    DualLogger, 
+    CheckPoint, 
+    EarlyStopping, 
+    make_save_dir
+)
 from ..utils.data import (
     QuantileDiscretize, 
     UniformDiscretize, 
@@ -896,6 +901,7 @@ class TabularBERTTrainer(nn.Module):
                  lamb: float=None,
                  criterion: nn.Module=None,
                  metric: nn.Module=None,
+                 patience: int=10,
                  num_workers: int=0
                  ) -> None: 
         """
@@ -1060,6 +1066,10 @@ class TabularBERTTrainer(nn.Module):
         if self.save:
             checkpoint = CheckPoint(self.save_dir, phase='finetuning', max=False)
         
+        # Define early stopping
+        if patience is not None:
+            early_stopping = EarlyStopping(patience=patience, mode='max')
+        
         # Define model
         self.model = DownstreamModel(pretrained=self.model,
                                      head = self.head)
@@ -1119,6 +1129,15 @@ class TabularBERTTrainer(nn.Module):
                 # Elegant progress reporting
                 self._log_epoch_progress(train_metrics['risk'], valid_metrics['risk'],
                                          train_metrics['metric'], valid_metrics['metric'])
+                
+                if patience is not None:
+                    if metric is not None:
+                        stop = early_stopping(valid_metrics['metric'])
+                    else:
+                        stop = early_stopping(valid_metrics['risk'])
+                    if stop:
+                        print(f"Early stopping at epoch {epoch}")
+                        break
             else:
                 # No validation data - checkpoint on training loss
                 if self.save:

@@ -185,3 +185,31 @@ class DualLogger:
     
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
+        
+
+
+class EarlyStopping:
+    def __init__(self, patience: int=10, mode: str='min'):
+        self.patience = patience
+        self.mode = mode
+        self.best_score = None
+        self.counter = 0
+    
+    def __call__(self, score: float):
+        if self.best_score is None:
+            self.best_score = score
+        elif self.mode == 'min':
+            if score < self.best_score:
+                self.counter += 1
+            else:
+                self.best_score = score
+                self.counter = 0
+        elif self.mode == 'max':
+            if score > self.best_score:
+                self.counter += 1
+            else:
+                self.best_score = score
+                self.counter = 0
+        if self.counter >= self.patience:
+            return True
+        return False
