@@ -700,7 +700,7 @@ class TabularBERTTrainer(nn.Module):
                 if self.save:
                     checkpoint(current_loss, self.model, self.config)
                 
-                # Elegant progress reporting
+                # Progress reporting
                 self._log_epoch_progress(train_metrics['risk'], valid_metrics['risk'])
             else:
                 # No validation data - checkpoint on training loss
@@ -730,6 +730,7 @@ class TabularBERTTrainer(nn.Module):
         """
         self.model.train()
         total_loss = 0.0
+        pred_loss = 0.0
         num_batches = len(trainloader)
         
         for batch_idx, (batch_bin_ids, batch_labels, batch_tabular_x) in enumerate(trainloader):
@@ -748,7 +749,8 @@ class TabularBERTTrainer(nn.Module):
             regularization_loss = embed_penalty(self.model.num_embedding.bin_embedding.weight) if self.model.num_embedding is not None else 0.0
             
             # Combined loss
-            total_batch_loss = mse_loss_val + wasserstein_loss_val + ce_loss_val + regularization_loss
+            pred_batch_loss = mse_loss_val + wasserstein_loss_val + ce_loss_val
+            total_batch_loss = pred_batch_loss + regularization_loss
             
             # Backward pass and optimization
             total_batch_loss.backward()
@@ -757,6 +759,7 @@ class TabularBERTTrainer(nn.Module):
             
             # Metrics tracking
             total_loss += total_batch_loss.item()
+            pred_loss += pred_batch_loss.item()
             
             # Log detailed metrics
             if self.save:
@@ -769,7 +772,7 @@ class TabularBERTTrainer(nn.Module):
             epoch += 1
         
         return {
-            'risk': total_loss / num_batches,
+            'risk': pred_loss / num_batches,
             'global_step': epoch,
         }
     
@@ -813,20 +816,21 @@ class TabularBERTTrainer(nn.Module):
             regularization_loss = embed_penalty(self.model.num_embedding.bin_embedding.weight) if self.model.num_embedding is not None else 0.0
             
             # Combined loss
-            risk = mse_loss_val + wasserstein_loss_val + ce_loss_val + regularization_loss
+            pred_risk = mse_loss_val + wasserstein_loss_val + ce_loss_val
+            total_risk = pred_risk + regularization_loss 
             wasserstein_loss = wasserstein_loss_val.item()
             mse_loss = mse_loss_val.item()
             ce_loss = ce_loss_val.item()
             
             # Log validation metrics
             if self.save:
-                self.logger.log_scalar('Loss/Valid/Risk', risk, epoch)
+                self.logger.log_scalar('Loss/Valid/Total', total_risk, epoch)
                 self.logger.log_scalar('Loss/Valid/MSE', mse_loss, epoch)
                 self.logger.log_scalar('Loss/Valid/Wasserstein', wasserstein_loss, epoch)
                 self.logger.log_scalar('Loss/Valid/CE', ce_loss, epoch)
                     
         return {
-            'risk': risk,
+            'risk': pred_risk,
         }
     
     def _log_epoch_progress(self, train_loss, valid_loss=None, train_metric=None, valid_metric=None):
@@ -901,7 +905,7 @@ class TabularBERTTrainer(nn.Module):
                  lamb: float=None,
                  criterion: nn.Module=None,
                  metric: nn.Module=None,
-                 patience: int=10,
+                 patience: int=20,
                  num_workers: int=0
                  ) -> None: 
         """
@@ -1126,7 +1130,7 @@ class TabularBERTTrainer(nn.Module):
                     else:
                         checkpoint(valid_metrics['risk'], self.model, self.config)
                     
-                # Elegant progress reporting
+                # Progress reporting
                 self._log_epoch_progress(train_metrics['risk'], valid_metrics['risk'],
                                          train_metrics['metric'], valid_metrics['metric'])
                 
@@ -1141,10 +1145,11 @@ class TabularBERTTrainer(nn.Module):
             else:
                 # No validation data - checkpoint on training loss
                 if self.save:
-                    if metric is not None:
-                        checkpoint(train_metrics['metric'], self.model, self.config)
-                    else:
-                        checkpoint(train_metrics['risk'], self.model, self.config)
+                    # if metric is not None:
+                    #     checkpoint(train_metrics['metric'], self.model, self.config)
+                    # else:
+                    #     checkpoint(train_metrics['risk'], self.model, self.config)
+                    checkpoint._save_checkpoint(self.model, self.config)
                 
                 # Training-only progress reporting
                 self._log_epoch_progress(train_metrics['risk'],
@@ -1164,6 +1169,7 @@ class TabularBERTTrainer(nn.Module):
         """
         self.model.train()
         total_loss = 0.0
+        pred_loss = 0.0
         avg_metric = 0.0
         num_batches = len(trainloader)
         
@@ -1189,6 +1195,7 @@ class TabularBERTTrainer(nn.Module):
             
             # Metrics tracking
             total_loss += total_batch_loss.item()
+            pred_loss += loss_val.item()
             if metric is not None:
                 m = metric(predictions, batch_labels)
                 avg_metric += m.item() / num_batches
@@ -1204,7 +1211,7 @@ class TabularBERTTrainer(nn.Module):
             epoch += 1
         
         return {
-            'risk': total_loss / num_batches,
+            'risk': pred_loss / num_batches,
             'metric': avg_metric if metric is not None else None,
             'global_step': epoch
         }    
@@ -1245,13 +1252,14 @@ class TabularBERTTrainer(nn.Module):
                 
             # Log validation metrics
             if self.save:
-                self.logger.log_scalar('Loss/Valid/Risk', risk, epoch)
+                self.logger.log_scalar('Loss/Valid/Total', risk.item(), epoch)
+                self.logger.log_scalar('Loss/Valid/Loss', loss_val.item(), epoch)
                 if metric is not None:
-                    self.logger.log_scalar('Metric/Valid', m, epoch)
+                    self.logger.log_scalar('Metric/Valid', m.item(), epoch)
         
         return {
-            'risk': risk,
-            'metric': m if metric is not None else None,
+            'risk': loss_val.item(),
+            'metric': m.item() if metric is not None else None,
         }
         
     def _process_labels(self, y: ArrayLike, reference: List | ArrayLike=None) -> Tuple[ArrayLike, Dict[str, int]]:
