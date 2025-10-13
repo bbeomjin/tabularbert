@@ -89,7 +89,7 @@ class Classifier(nn.Module):
         
         # Create linear layers for each task
         self.fc = nn.ModuleList([
-            nn.Linear(embedding_dim, v.get('num_bins', v.get('num_categories'))) 
+            nn.Linear(embedding_dim, v.get('num_bins', v.get('num_categories')) + 1) 
             for _, v in encoding_info.items()
         ])
         

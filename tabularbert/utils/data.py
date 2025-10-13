@@ -258,7 +258,7 @@ class SSLDataset(Dataset):
             Tuple[torch.Tensor, torch.Tensor]: (masked_tokens, labels)
         """
         # Clone tokens for labels and masking
-        labels = (tokens - 1).clone()
+        labels = tokens.clone()
         masked_tokens = tokens.clone()
         
         # Generate random probabilities for each token

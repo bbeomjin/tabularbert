@@ -64,7 +64,7 @@ class TabularCrossEntropy(nn.Module):
             feature_loss = self._compute_ce(predictions[feature_idx], targets[:, feature_idx])
             total_loss += feature_loss
             
-        return total_loss / self.num_features
+        return total_loss / len(self.compute_ids)
 
 
 class TabularMSE(nn.Module):
@@ -125,7 +125,7 @@ class TabularMSE(nn.Module):
             )
             total_loss += feature_loss
             
-        return total_loss / self.num_features
+        return total_loss / len(self.compute_ids)
 
 
 class TabularWasserstein(nn.Module):
@@ -161,8 +161,6 @@ class TabularWasserstein(nn.Module):
         Returns:
             torch.Tensor: Wasserstein distance loss
         """
-        # Convert logits to probabilities
-        pred_probs = F.softmax(prediction, dim=-1)
         
         # Create mask for valid targets
         valid_mask = target != self.ignore_index
@@ -170,20 +168,25 @@ class TabularWasserstein(nn.Module):
         if not valid_mask.any():
             return torch.tensor(0.0, device=prediction.device, requires_grad=True)
         
+        # Convert logits to probabilities
+        pred_probs = F.softmax(prediction[valid_mask], dim=-1)
+        
         # Handle ignored indices by filling with a placeholder value
-        target_filled = target.masked_fill(target == self.ignore_index, vocab_size)
+        # target_filled = target.masked_fill(target == self.ignore_index, vocab_size)
         
         # Convert targets to one-hot encoding (excluding the placeholder)
-        target_onehot = F.one_hot(target_filled, vocab_size + 1)[:, :-1].float()
+        # target_onehot = F.one_hot(target_filled, vocab_size + 1).float()
+        target_onehot = F.one_hot(target[valid_mask], vocab_size + 1).float()
         
         # Compute cumulative distributions
         pred_cumsum = pred_probs.cumsum(dim=-1)
         target_cumsum = target_onehot.cumsum(dim=-1)
         
         # Compute Wasserstein distance (L2 norm of cumulative differences)
-        wasserstein_dist = ((pred_cumsum - target_cumsum)**2).sum(dim=-1)
+        # wasserstein_dist = ((pred_cumsum - target_cumsum)**2).sum(dim=-1)
+        wasserstein_dist = ((pred_cumsum - target_cumsum)**2).mean(dim=-1)
         
-        return wasserstein_dist[valid_mask].mean()
+        return wasserstein_dist.mean()
 
     def forward(self, predictions: List[torch.Tensor], targets: torch.Tensor) -> torch.Tensor:
         """
@@ -209,5 +212,5 @@ class TabularWasserstein(nn.Module):
             )
             total_loss += feature_loss
             
-        return total_loss / self.num_features
+        return total_loss / len(self.compute_ids)
 
