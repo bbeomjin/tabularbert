@@ -20,7 +20,8 @@ from ..utils.utils import (
     DualLogger, 
     CheckPoint, 
     EarlyStopping, 
-    make_save_dir
+    make_save_dir,
+    separate_decay_params
 )
 from ..utils.data import (
     QuantileDiscretize, 
@@ -98,7 +99,7 @@ class TabularBERT(nn.Module):
                 max_position=len(self.num_var_ids),
                 embedding_dim=embedding_dim,
                 mask_idx=0,
-                mode = mode
+                mode=mode
             )
         else:
             self.num_embedding = None
@@ -111,20 +112,20 @@ class TabularBERT(nn.Module):
                 max_position=len(self.cat_var_ids),
                 embedding_dim=embedding_dim,
                 mask_idx=0,
-                mode = mode
+                mode=mode
             )
         else:
             self.cat_embedding = None
             
         self.register_buffer('sorting_key', torch.argsort(torch.tensor(self.num_var_ids + self.cat_var_ids)))
         
-        self.cls_embedding = nn.Embedding(1, embedding_dim)
         # Pre-register [CLS] token as a buffer for efficiency
         # This avoids creating the tensor in every forward pass
+        self.cls_embedding = nn.Embedding(1, embedding_dim)
         self.register_buffer('cls_token', torch.zeros(1, 1, dtype=torch.long))
         
         # Initialize layer norm and dropout
-        self.embedding_layer_norm = nn.LayerNorm(embedding_dim)
+        self.embedding_layernorm = nn.LayerNorm(embedding_dim)
         self.embedding_dropout = nn.Dropout(dropout)
         
         # Initialize BERT encoder
@@ -191,7 +192,7 @@ class TabularBERT(nn.Module):
         embeddings = torch.cat([cls_embedded, embeddings], dim=1)
         
         # Apply layer norm and dropout
-        embeddings = self.embedding_layer_norm(embeddings)
+        embeddings = self.embedding_layernorm(embeddings)
         embeddings = self.embedding_dropout(embeddings)
         
         # BERT encoder: learn contextual representations
@@ -683,8 +684,12 @@ class TabularBERTTrainer(nn.Module):
                 UserWarning
             )
             self.set_optimizer(weight_decay=1e-2)
-            
-        optimizer = self.optimizer(params=self.model.parameters())
+        
+        decay_params, no_decay_params = separate_decay_params(self.model)    
+        optimizer = self.optimizer([
+            {'params': decay_params},
+            {'params': no_decay_params, 'weight_decay': 0.0}
+            ])
         total_steps = epochs * len(trainloader)
         scheduler = CosineAnnealingLR(optimizer, T_max=total_steps)
         
@@ -1111,8 +1116,12 @@ class TabularBERTTrainer(nn.Module):
                 UserWarning
             )
             self.set_optimizer(weight_decay=1e-5)
-            
-        optimizer = self.optimizer(params=self.model.parameters())
+        
+        decay_params, no_decay_params = separate_decay_params(self.model)    
+        optimizer = self.optimizer([
+                {'params': decay_params},
+                {'params': no_decay_params, 'weight_decay': 0.0}
+                ])
         total_steps = epochs * len(trainloader)
         scheduler = CosineAnnealingLR(optimizer, T_max=total_steps)
         

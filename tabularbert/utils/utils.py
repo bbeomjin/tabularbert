@@ -215,3 +215,34 @@ class EarlyStopping:
         if self.counter >= self.patience:
             return True
         return False
+    
+    
+def separate_decay_params(model, no_decay_names=None):
+    """
+    Separate model parameters into two groups: 
+    one with weight decay applied and one without.
+
+    Args:
+        model (torch.nn.Module): The PyTorch model.
+        no_decay_names (list[str], optional): 
+            List of substrings used to identify parameters 
+            that should NOT have weight decay applied.
+            Defaults to ["bias", "layernorm.weight", 'norm1.weight', 'norm2.weight', 'embedding.weight']
+
+    Returns:
+        (list, list): A tuple containing:
+            - decay_params: parameters with weight decay applied
+            - no_decay_params: parameters without weight decay
+    """
+    if no_decay_names is None:
+        no_decay_names = ["bias", "layernorm.weight", 'norm1.weight', 'norm2.weight', 'embedding.weight']
+
+    decay, no_decay = [], []
+    for name, param in model.named_parameters():
+        if not param.requires_grad:
+            continue  # skip frozen parameters
+        if any(nd in name for nd in no_decay_names):
+            no_decay.append(param)
+        else:
+            decay.append(param)
+    return decay, no_decay
