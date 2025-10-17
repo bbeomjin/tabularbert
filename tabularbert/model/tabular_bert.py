@@ -426,7 +426,8 @@ class TabularBERTTrainer(nn.Module):
                 embedding_dim: int=1024,
                 n_layers: int=3,
                 n_heads: int=8,
-                dropout: float=0.1) -> None:
+                dropout: float=0.1,
+                mode: str='add') -> None:
         """
         Initialize the TabularBERT model for masked language modeling.
         
@@ -445,6 +446,7 @@ class TabularBERTTrainer(nn.Module):
                 'n_layers': n_layers,
                 'n_heads': n_heads,
                 'dropout': dropout,
+                'mode': mode,
                 'total_parameters': None  # Will be updated after model creation
             }
         
@@ -454,7 +456,8 @@ class TabularBERTTrainer(nn.Module):
             embedding_dim=embedding_dim,
             n_layers=n_layers,
             n_heads=n_heads,
-            dropout=dropout
+            dropout=dropout,
+            mode=mode
         ).to(self.device)
         
         # Update total parameters count
