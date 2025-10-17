@@ -59,6 +59,7 @@ class TabularBERT(nn.Module):
         n_layers (int): Number of transformer encoder layers. Default: 4
         n_heads (int): Number of attention heads. Default: 8
         dropout (float): Dropout probability for regularization. Default: 0.1
+        mode (str): Mode for concatenating bin and positional embeddings. Default: 'add'
     
     Example:
         >>> encoding_info = {'var1': {'num_bins': 10}, 'var2': {'num_categories': 5}}
@@ -72,7 +73,8 @@ class TabularBERT(nn.Module):
                  embedding_dim: int=1024,
                  n_layers: int=3,
                  n_heads: int=8,
-                 dropout: float=0.1) -> None:
+                 dropout: float=0.1,
+                 mode: str='add') -> None:
         super(TabularBERT, self).__init__()
         
         # Store configuration
@@ -81,6 +83,7 @@ class TabularBERT(nn.Module):
         self.n_layers = n_layers
         self.n_heads = n_heads
         self.dropout = dropout
+        self.mode = mode
         
         # Validate inputs
         if embedding_dim % n_heads != 0:
@@ -94,7 +97,8 @@ class TabularBERT(nn.Module):
                 max_len=max(num_encoding_info.values()),
                 max_position=len(self.num_var_ids),
                 embedding_dim=embedding_dim,
-                mask_idx=0
+                mask_idx=0,
+                mode = mode
             )
         else:
             self.num_embedding = None
@@ -106,7 +110,8 @@ class TabularBERT(nn.Module):
                 max_len=max(cat_encoding_info.values()),
                 max_position=len(self.cat_var_ids),
                 embedding_dim=embedding_dim,
-                mask_idx=0
+                mask_idx=0,
+                mode = mode
             )
         else:
             self.cat_embedding = None
@@ -117,6 +122,10 @@ class TabularBERT(nn.Module):
         # Pre-register [CLS] token as a buffer for efficiency
         # This avoids creating the tensor in every forward pass
         self.register_buffer('cls_token', torch.zeros(1, 1, dtype=torch.long))
+        
+        # Initialize layer norm and dropout
+        self.embedding_layer_norm = nn.LayerNorm(embedding_dim)
+        self.embedding_dropout = nn.Dropout(dropout)
         
         # Initialize BERT encoder
         self.bert = BERT(
@@ -180,6 +189,10 @@ class TabularBERT(nn.Module):
         
         # Prepend CLS token
         embeddings = torch.cat([cls_embedded, embeddings], dim=1)
+        
+        # Apply layer norm and dropout
+        embeddings = self.embedding_layer_norm(embeddings)
+        embeddings = self.embedding_dropout(embeddings)
         
         # BERT encoder: learn contextual representations
         contextualized_embeddings = self.bert(embeddings)

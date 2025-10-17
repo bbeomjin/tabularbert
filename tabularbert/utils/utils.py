@@ -35,6 +35,7 @@ class CheckPoint:
                 'n_layers': model.n_layers,
                 'n_heads': model.n_heads,
                 'dropout': model.dropout,
+                'mode': model.mode
             },
             'regularization_lambda': config['pretraining']['training']['regularization_lambda'],
             'penalty': config['pretraining']['training']['penalty']
@@ -51,6 +52,7 @@ class CheckPoint:
                     'n_layers': model.pretrained.n_layers,
                     'n_heads': model.pretrained.n_heads,
                     'dropout': model.pretrained.dropout,
+                    'mode': model.pretrained.mode
                 },
                 'mlp_head': {
                     'input_dim': model.head.input_dim,

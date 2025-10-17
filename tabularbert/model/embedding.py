@@ -14,24 +14,39 @@ class NumEmbedding(nn.Module):
         max_position (int): Maximum position for positional embeddings (number of columns in the input)
         embedding_dim (int): Dimension of the embedding vectors
         mask_idx (int, optional): Index used for masking. 
+        mode (str, optional): Mode for concatenating bin and positional embeddings. Default: 'add'
     """
     
     def __init__(self, 
                  max_len: int,
                  max_position: int,
                  embedding_dim: int,
-                 mask_idx: int=None) -> None:
+                 mask_idx: int=None,
+                 mode: str='add') -> None:
         super(NumEmbedding, self).__init__()
         self.max_len = max_len
         self.max_position = max_position
         self.embedding_dim = embedding_dim
         self.mask_idx = mask_idx
+        self.mode = mode
         
         if mask_idx is not None:
             max_len += 1
             
         self.positional_embedding = PositionalEmbedding(max_position, embedding_dim)
         self.bin_embedding = nn.Embedding(max_len, embedding_dim)
+        
+        if mode == 'add':
+            pass
+        elif mode == 'concat':
+            self.proj = nn.Linear(2 * embedding_dim, embedding_dim)
+        else:
+            raise ValueError("mode must be add or concat")
+        
+        self._init_weights()
+    
+    def _init_weights(self):
+        nn.init.normal_(self.bin_embedding.weight, mean=0.0, std=1.0)
         
     def forward(self, bin_ids: torch.Tensor) -> torch.Tensor:
         """
@@ -49,7 +64,11 @@ class NumEmbedding(nn.Module):
         bin_embedded = self.bin_embedding(bin_ids)
         
         # Combine bin and positional embeddings
-        embedded = bin_embedded + positional_embedded
+        if self.mode == 'add':
+            embedded = bin_embedded + positional_embedded
+        elif self.mode == 'concat':
+            embedded = torch.cat([bin_embedded, positional_embedded.expand(bin_ids.size(0), -1, -1)], dim=-1)
+            embedded = self.proj(embedded)
         
         return embedded
 
@@ -68,24 +87,39 @@ class CatEmbedding(nn.Module):
         max_position (int): Maximum position for positional embeddings (number of columns in the input)
         embedding_dim (int): Dimension of the embedding vectors
         mask_idx (int, optional): Index used for masking. 
+        mode (str, optional): Mode for concatenating bin and positional embeddings. Default: 'add'
     """
     
     def __init__(self, 
                  max_len: int,
                  max_position: int,
                  embedding_dim: int,
-                 mask_idx: int=None) -> None:
+                 mask_idx: int=None,
+                 mode: str='add') -> None:
         super(CatEmbedding, self).__init__()
         self.max_len = max_len
         self.max_position = max_position
         self.embedding_dim = embedding_dim
         self.mask_idx = mask_idx
+        self.mode = mode
         
         if mask_idx is not None:
             max_len += 1
             
         self.positional_embedding = PositionalEmbedding(max_position, embedding_dim)
         self.bin_embedding = nn.Embedding(max_len, embedding_dim)
+        
+        if mode == 'add':
+            pass
+        elif mode == 'concat':
+            self.proj = nn.Linear(2 * embedding_dim, embedding_dim)
+        else:
+            raise ValueError("mode must be add or concat")
+        
+        self._init_weights()
+    
+    def _init_weights(self):
+        nn.init.normal_(self.bin_embedding.weight, mean=0.0, std=1.0)
         
     def forward(self, bin_ids: torch.Tensor) -> torch.Tensor:
         """
@@ -103,7 +137,11 @@ class CatEmbedding(nn.Module):
         bin_embedded = self.bin_embedding(bin_ids)
         
         # Combine bin and positional embeddings
-        embedded = bin_embedded + positional_embedded
+        if self.mode == 'add':
+            embedded = bin_embedded + positional_embedded
+        elif self.mode == 'concat':
+            embedded = torch.cat([bin_embedded, positional_embedded.expand(bin_ids.size(0), -1, -1)], dim=-1)
+            embedded = self.proj(embedded)
         
         return embedded
 
@@ -128,6 +166,10 @@ class PositionalEmbedding(nn.Module):
         self.max_len = max_len
         self.embedding_dim = embedding_dim
         self.embedding = nn.Embedding(max_len, embedding_dim)
+        self._init_weights()
+    
+    def _init_weights(self):
+        nn.init.normal_(self.embedding.weight, mean=0.0, std=0.5)
         
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
