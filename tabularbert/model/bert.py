@@ -67,7 +67,7 @@ class BERT(nn.Module):
 
 class Classifier(nn.Module):
     """
-    Multi-task classification head for sequence-to-sequence prediction.
+    Classification head for sequence-to-sequence prediction.
     
     This classifier applies different linear transformations to each position in the sequence
     (excluding the CLS token) to predict class labels for multiple tasks simultaneously.
@@ -121,7 +121,8 @@ class Classifier(nn.Module):
             raise ValueError(f"Expected {len(self.encoding_info)} sequence length, got {x.shape[1]}")
         
         outputs = []
-        # Process each position (excluding CLS token at position 0)
+        # The following indexing may occur mismatched outputs with the encoding_info when the encoding_info is not sorted by the variable name
+        # TODO: define variable indicies matching the variable name and j set to the variable index
         for j in range(len(self.encoding_info)):
             # Apply corresponding linear layer to position j
             logits = self.fc[j](x[:, j])
@@ -133,7 +134,7 @@ class Classifier(nn.Module):
 
 class Regressor(nn.Module):
     """
-    Multi-task regression head for sequence-to-value prediction.
+    Regression head for sequence-to-value prediction.
     
     This regressor applies linear transformations to BERT embeddings from each sequence position
     (excluding the CLS token) to predict continuous real values for multiple regression tasks.
@@ -188,7 +189,9 @@ class Regressor(nn.Module):
             raise ValueError(f"Expected {len(self.encoding_info)} sequence length, got {x.shape[1]}")
         
         outputs = []
-        # Process each position (excluding CLS token at position 0)
+        
+        # The following indexing may occur mismatched outputs with the encoding_info when the encoding_info is not sorted by the variable name
+        # TODO: define variable indicies matching the variable name and j set to the variable index
         for j, (k, v) in enumerate(self.encoding_info.items()):
             if 'num_bins' in v.keys():
                 # Apply corresponding linear layer to position j

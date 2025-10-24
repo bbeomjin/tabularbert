@@ -28,7 +28,6 @@ class TabularCrossEntropy(nn.Module):
         super(TabularCrossEntropy, self).__init__()
         self.encoding_info = encoding_info
         self.ignore_index = ignore_index
-        self.num_features = len(encoding_info)
         self.compute_ids = [i for i, (_, v) in enumerate(encoding_info.items()) if 'num_categories' in v.keys()]
 
     def _compute_ce(self, prediction: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
@@ -81,7 +80,6 @@ class TabularMSE(nn.Module):
     def __init__(self, encoding_info: Dict[str, Dict[str, int]]) -> None:
         super(TabularMSE, self).__init__()
         self.encoding_info = encoding_info
-        self.num_features = len(encoding_info)
         self.compute_ids = [i for i, (_, v) in enumerate(encoding_info.items()) if 'num_bins' in v.keys()]
         
     def _compute_mse(self, prediction: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
@@ -144,9 +142,8 @@ class TabularWasserstein(nn.Module):
         super(TabularWasserstein, self).__init__()
         self.encoding_info = encoding_info
         self.ignore_index = ignore_index
-        self.num_features = len(encoding_info)
-        self.compute_ids = [i for i, (_, v) in enumerate(encoding_info.items()) if 'num_bins' in v.keys()]
-        self.vocab_sizes = [v.get('num_bins', None) for _, v in encoding_info.items()]
+        self.compute_ids = [i for i, (_, v) in enumerate(encoding_info.items())]
+        self.vocab_sizes = [v.get('num_bins', v.get('num_categories')) for _, v in encoding_info.items()]
         
     def _compute_wasserstein(self, prediction: torch.Tensor, target: torch.Tensor, 
                            vocab_size: int) -> torch.Tensor:
@@ -171,11 +168,7 @@ class TabularWasserstein(nn.Module):
         # Convert logits to probabilities
         pred_probs = F.softmax(prediction[valid_mask], dim=-1)
         
-        # Handle ignored indices by filling with a placeholder value
-        # target_filled = target.masked_fill(target == self.ignore_index, vocab_size)
-        
         # Convert targets to one-hot encoding (excluding the placeholder)
-        # target_onehot = F.one_hot(target_filled, vocab_size + 1).float()
         target_onehot = F.one_hot(target[valid_mask], vocab_size + 1).float()
         
         # Compute cumulative distributions
