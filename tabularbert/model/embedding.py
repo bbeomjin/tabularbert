@@ -99,7 +99,7 @@ class TokenEmbedding(nn.Module):
         
         # Apply layer norm and dropout
         embeddings = self.embedding_layernorm(embeddings)
-        embeddings = self.embedding_dropout(embeddings)
+        # embeddings = self.embedding_dropout(embeddings)
         
         return embeddings
 
@@ -179,7 +179,7 @@ class PositionalEmbedding(nn.Module):
     def _init_weights(self):
         # The standard deviation of the initial weights is set to be less than 
         # that of the bin embeddings to prevent dominance of positional information.
-        nn.init.normal_(self.embedding.weight, mean=0.0, std=0.5)
+        nn.init.normal_(self.embedding.weight, mean=0.0, std=0.75)
         
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """

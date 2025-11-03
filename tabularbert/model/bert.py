@@ -46,7 +46,8 @@ class BERT(nn.Module):
         
         self.transformer = nn.TransformerEncoder(
             transformer_layer, 
-            num_layers=n_layers
+            num_layers=n_layers,
+            norm=nn.LayerNorm(embedding_dim)
         )
     
     def forward(self, embeddings: torch.Tensor) -> torch.Tensor:
