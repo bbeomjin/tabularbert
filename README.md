@@ -1,57 +1,46 @@
-# TabularBERT
+# [ICML 2026] TabularBERT: Binning-Based Self-Supervised Learning for Tabular Representation
 
-TabularBERT is a comprehensive framework for tabular data modeling using BERT-based transformers. This package provides tools for pretraining and fine-tuning BERT models on tabular datasets, enabling powerful representation learning for structured data.
+This repository provides the official implementation of **TabularBERT**, a Transformer-based model for tabular data that tokenizes continuous variables via binning and learns numerically structured representations through MLM pretraining and downstream fine-tuning.
 
-## Features
-
-- BERT-based architecture specifically designed for tabular data
-- Support for both pretraining and fine-tuning workflows
-- Built-in data preprocessing and encoding utilities
+<p align="center">
+<img src="./TabularBERT_pretraining.png" width="800">
+</p>
 
 ## Installation
 
-### Method 1: Install from Source (Recommended)
+- Requirements: See `requirements.txt`
 
-1. **Download the package source from GitHub:**
+#### Method 1: Install from Source (Recommended)
+
+1. Download the package source from GitHub:
    ```bash
    git clone https://github.com/bbeomjin/tabularbert.git
    ```
 
-2. **Navigate to the package directory:**
+2. Navigate to the package directory:
    ```bash
    cd tabularbert
    ```
 
-3. **Install the package locally:**
+3. Install the package locally:
    ```bash
    pip install .
    ```
 
-### Method 2: Install from ZIP Archive
+#### Method 2: Install from ZIP Archive
 
-1. **Download the ZIP file from GitHub:**
-   - Go to https://github.com/bbeomjin/tabularbert
-   - Click "Code" → "Download ZIP"
+1. Download the ZIP file from GitHub:
+   - Click "`Code`" & "`Download ZIP`"
 
-2. **Unzip the package file:**
+2. Unzip the package file and navigate to the package directory:
    ```bash
-   unzip tabularbert-main.zip
    cd tabularbert-main
    ```
 
-3. **Install from files locally:**
+3. Install from files locally:
    ```bash
    pip install -e .
    ```
-
-## Requirements
-
-- Python >= 3.8
-- PyTorch >= 1.9.0
-- NumPy >= 1.20.0
-- Pandas >= 1.3.0
-- scikit-learn >= 1.0.0
-- Other dependencies (see `requirements.txt`)
 
 ## Quick Start
 
@@ -94,49 +83,21 @@ trainer.setup_directories_and_logging(
 trainer.pretrain()
 ```
 
-## Project Structure
-
-```
-tabularbert/
-├── tabularbert/          # Main package directory
-├── datasets/             # Example datasets
-├── pretraining/          # Pretraining scripts and configs
-├── fine-tuning/          # Fine-tuning scripts and configs
-├── example.py            # Usage example
-├── requirements.txt      # Package dependencies
-├── setup.py             # Package setup configuration
-└── README.md            # This file
-```
-
-## Documentation
-
-For more detailed documentation and advanced usage examples, please refer to:
-- `example.py` - Complete usage example
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit issues and pull requests.
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+- For more detailed documentation and advanced usage examples, please refer to: `example.py`
 
 ## Citation
 
 If you use TabularBERT in your research, please cite:
 
 ```bibtex
-@misc{tabularbert,
-  author = {Beomjin Park},
-  title = {TabularBERT: A BERT-based Framework for Tabular Data},
-  year = {2025},
-  url = {https://github.com/bbeomjin/tabularbert}
+@inproceedings{park2026tabularbert,
+    title={TabularBERT: Binning-Based Self-Supervised Learning for Tabular Representation},
+    author={Beomjin Park and Seunghwan An and Sungchul Hong and Hosik Choi},
+    booktitle={Forty-third International Conference on Machine Learning},
+    year={2026}
 }
 ```
 
-## Contact
+## License
 
-- Author: Beomjin Park
-- Email: bbeomjin@gmail.com
-- GitHub: https://github.com/bbeomjin/tabularbert
-
+This project is licensed under the MIT License - see the LICENSE file for details.
